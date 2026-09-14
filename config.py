@@ -1,14 +1,27 @@
 from dataclasses import dataclass
+from typing import Optional, Tuple
+
+
+@dataclass(frozen=True)
+class ClusterConfig:
+    cpu_capacity: float
+    p_idle_kw: float
+    p_max_kw: float
+
 
 @dataclass
 class Config:
     hours: int = 168
     timestep_h: float = 1.0
 
+    # Used to generate identical clusters when clusters is None.
     n_clusters: int = 10
     p_idle_kw: float = 1.0
     p_max_kw: float = 3.0
     cpu_capacity: float = 100.0
+
+    # Provide explicit specifications to model heterogeneous clusters.
+    clusters: Optional[Tuple[ClusterConfig, ...]] = None
 
     cooling_cop: float = 3.5
     ambient_temp_c: float = 24.0

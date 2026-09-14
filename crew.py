@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from crewai import Crew, Process
 
 from agents import (
@@ -51,7 +53,10 @@ def get_data_center_crew(architecture="four_agent"):
         )
 
     return Crew(
-        agents=agents,
+        # CrewAI's constructor is typed as list[BaseAgent], while these
+        # concrete objects are list[Agent]. Runtime behavior is valid, but
+        # list invariance prevents Pylance from accepting the narrower list.
+        agents=cast(Any, agents),
         tasks=tasks,
         process=Process.sequential,
         verbose=True,

@@ -67,16 +67,18 @@ then allocate demand, then set unused hosts to zero and power them off.
 )
 
 cooling_task_four = Task(
-    description=COOLING_RULES + "
-Inspect the results of both compute tasks.",
+    description=COOLING_RULES + """
+Inspect the results of both compute tasks.
+""",
     expected_output="Selected cooling factor with thermal justification.",
     agent=cooling_agent,
     context=[scheduler_task, power_task],
 )
 
 cooling_task_three = Task(
-    description=COOLING_RULES + "
-Inspect the integrated compute decision.",
+    description=COOLING_RULES + """
+Inspect the integrated compute decision.
+""",
     expected_output="Selected cooling factor with thermal justification.",
     agent=cooling_agent,
     context=[compute_task],

@@ -12,60 +12,60 @@ from agents import (
 
 COMMON_LIMITS = """
 Call Get cluster telemetry exactly once. Then call the required control tool
-exactly once with the complete decision. Do not call any tool host-by-host.
-If the tool returns ACCEPTED, finish immediately without verification or
-another tool call. Only correct and retry when the tool returns REJECTED.
+exactly once. All control inputs are simple numbers; never construct a host
+dictionary or perform host-by-host calls. If the tool returns ACCEPTED,
+finish immediately. Retry only when it returns REJECTED.
 """
 
-SCHEDULING_RULES = """
-Demand is in CPU units. Assigned CPU equals utilisation times cpu_capacity.
-Serve all feasible demand. Prefer at most 90% utilisation, but use up to 100%
-when needed. Consolidate workload and use 0 for omitted hosts.
+COMPUTE_RULES = """
+Choose a target_utilisation between 0.50 and 1.00. A lower target keeps more
+hosts active with more headroom; a higher target consolidates demand and
+usually reduces idle power. Prefer 0.90 unless current conditions justify
+another value. Deterministic code calculates all individual allocations and
+serves all feasible CPU demand.
 """
 
 COOLING_RULES = """
-Keep temperature between 19 C and 27 C. Cooling factor is 0.8 to 1.5.
-Minimize cooling electricity without causing a thermal violation.
+Keep temperature between 19 C and 27 C. Choose cooling_factor from 0.8 to
+1.5. Minimize cooling electricity without causing a thermal violation.
 """
 
 ENERGY_RULES = """
-Positive battery power discharges; negative power charges. Stay within the
-10%-95% SOC range and 60 kW power limits. Prefer solar, use discharge when
-grid price is high, and preserve reserve.
+Choose battery power in kW. Positive discharges and negative charges. Stay
+within 10%-95% SOC and plus or minus 60 kW. Prefer solar, consider discharge
+at high grid price, and preserve battery reserve.
 """
 
 
 scheduler_task = Task(
-    description=COMMON_LIMITS + SCHEDULING_RULES + """
-Use Schedule all workload once. Provide one allocations object mapping host
-names to utilisation fractions. Omitted hosts receive zero.
+    description=COMMON_LIMITS + COMPUTE_RULES + """
+Call Schedule all workload once with only target_utilisation.
 """,
-    expected_output="Accepted batch CPU allocation.",
+    expected_output="Accepted deterministic CPU allocation.",
     agent=scheduler_agent,
 )
 
 power_task = Task(
     description=COMMON_LIMITS + """
-Use Set all host power states once. Supply one active_hosts list containing
-every loaded host and any additional host that must remain on.
+Call Set all host power states once with no arguments. It automatically keeps
+loaded hosts on and turns zero-utilisation hosts off.
 """,
-    expected_output="Accepted batch host-power plan.",
+    expected_output="Accepted deterministic host-power plan.",
     agent=power_governor_agent,
     context=[scheduler_task],
 )
 
 compute_task = Task(
-    description=COMMON_LIMITS + SCHEDULING_RULES + """
-Use Apply complete compute plan once. It automatically turns allocated hosts
-on and zero-utilisation hosts off.
+    description=COMMON_LIMITS + COMPUTE_RULES + """
+Call Apply complete compute plan once with only target_utilisation.
 """,
-    expected_output="Accepted integrated compute plan.",
+    expected_output="Accepted compute and power plan.",
     agent=compute_agent,
 )
 
 cooling_task_four = Task(
     description=COMMON_LIMITS + COOLING_RULES + """
-Use Set cooling level once after inspecting the compute outcome.
+Call Set cooling level once with only cooling_factor.
 """,
     expected_output="Accepted cooling factor.",
     agent=cooling_agent,
@@ -74,7 +74,7 @@ Use Set cooling level once after inspecting the compute outcome.
 
 cooling_task_three = Task(
     description=COMMON_LIMITS + COOLING_RULES + """
-Use Set cooling level once after inspecting the compute outcome.
+Call Set cooling level once with only cooling_factor.
 """,
     expected_output="Accepted cooling factor.",
     agent=cooling_agent,
@@ -83,7 +83,7 @@ Use Set cooling level once after inspecting the compute outcome.
 
 energy_task_four = Task(
     description=COMMON_LIMITS + ENERGY_RULES + """
-Use Dispatch battery once after compute and cooling are complete.
+Call Dispatch battery once with only power_kw.
 """,
     expected_output="Accepted battery command.",
     agent=energy_agent,
@@ -92,7 +92,7 @@ Use Dispatch battery once after compute and cooling are complete.
 
 energy_task_three = Task(
     description=COMMON_LIMITS + ENERGY_RULES + """
-Use Dispatch battery once after compute and cooling are complete.
+Call Dispatch battery once with only power_kw.
 """,
     expected_output="Accepted battery command.",
     agent=energy_agent,
@@ -100,10 +100,9 @@ Use Dispatch battery once after compute and cooling are complete.
 )
 
 integrated_task = Task(
-    description=COMMON_LIMITS + SCHEDULING_RULES + COOLING_RULES + ENERGY_RULES + """
-Use Apply complete EMS plan once. Supply the full allocations object, one
-cooling_factor, and one battery_power_kw value. The tool validates and applies
-the entire plan atomically.
+    description=COMMON_LIMITS + COMPUTE_RULES + COOLING_RULES + ENERGY_RULES + """
+Call Apply complete EMS plan once with exactly three scalar arguments:
+target_utilisation, cooling_factor, and battery_power_kw.
 """,
     expected_output="Accepted complete EMS plan.",
     agent=integrated_ems_agent,

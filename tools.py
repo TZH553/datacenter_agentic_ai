@@ -129,17 +129,14 @@ def _normalise_battery(
             state.solar_kw - facility_power_kw,
         )
         requested_charge_kw = abs(value)
-        grid_charge_kw = max(
-            0.0,
-            requested_charge_kw - solar_surplus_kw,
-        )
-
-        if grid_charge_kw > 1e-9 and state.grid_price >= 0.18:
-            raise ValueError(
-                f"Charging would use {grid_charge_kw:.2f} kW from the "
-                f"grid at ${state.grid_price:.2f}/kWh. Grid charging is "
-                "allowed only below $0.18/kWh."
+        if state.grid_price >= 0.18:
+            # At normal/high prices, accept the plan but clamp charging
+            # to available solar surplus. This avoids repeated agent retries.
+            allowed_charge_kw = min(
+                requested_charge_kw,
+                solar_surplus_kw,
             )
+            value = -allowed_charge_kw
 
     return value
 
@@ -257,13 +254,23 @@ def set_cooling_level(cooling_factor: float) -> str:
 @tool("Dispatch battery")
 def dispatch_battery(power_kw: float) -> str:
     """Set battery power; positive discharges and negative charges."""
+    requested_power_kw = float(power_kw)
     try:
-        state.battery_command_kw = _normalise_battery(power_kw)
+        state.battery_command_kw = _normalise_battery(
+            requested_power_kw
+        )
     except (TypeError, ValueError) as error:
         return f"REJECTED: {error}"
+    adjustment = ""
+    if abs(state.battery_command_kw - requested_power_kw) > 1e-9:
+        adjustment = (
+            f" Requested {requested_power_kw:.2f} kW was safely adjusted "
+            "to avoid normal/high-price grid charging."
+        )
     return (
         f"ACCEPTED: battery command is "
-        f"{state.battery_command_kw:.2f} kW. Finish this task now."
+        f"{state.battery_command_kw:.2f} kW.{adjustment} "
+        "Finish this task now."
     )
 
 
@@ -277,11 +284,12 @@ def apply_ems_plan(
 
     All inputs are simple scalars for reliable local-model tool calling.
     """
+    requested_battery_kw = float(battery_power_kw)
     try:
         allocations = _build_allocations(target_utilisation)
         normalised_cooling = _normalise_cooling(cooling_factor)
         normalised_battery = _normalise_battery(
-            battery_power_kw,
+            requested_battery_kw,
             allocations=allocations,
             cooling_factor=normalised_cooling,
         )
@@ -299,10 +307,17 @@ def apply_ems_plan(
     active_hosts = [
         name for name, host in state.hosts.items() if host["active"]
     ]
+    adjustment = ""
+    if abs(normalised_battery - requested_battery_kw) > 1e-9:
+        adjustment = (
+            f" Battery request {requested_battery_kw:.2f} kW was safely "
+            "adjusted to avoid normal/high-price grid charging."
+        )
     return (
         f"ACCEPTED: {assigned_cpu:.2f} CPU units assigned; active hosts "
         f"{active_hosts}; cooling factor {state.cooling_factor:.2f}; "
-        f"battery {state.battery_command_kw:.2f} kW. Finish now."
+        f"battery {state.battery_command_kw:.2f} kW.{adjustment} "
+        "Finish now."
     )
 
 

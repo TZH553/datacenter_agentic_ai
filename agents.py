@@ -1,11 +1,13 @@
 from crewai import Agent, LLM
 
 from tools import (
+    apply_compute_plan,
+    apply_ems_plan,
     dispatch_battery,
     get_cluster_telemetry,
-    schedule_task,
+    schedule_workload_batch,
     set_cooling_level,
-    set_host_power,
+    set_host_power_batch,
 )
 
 
@@ -26,57 +28,35 @@ integrated_llm = _make_llm(max_tokens=4096)
 
 scheduler_agent = Agent(
     role="Data Centre Task Scheduler",
-    goal=(
-        "Allocate all requested CPU units across clusters while avoiding "
-        "overload and enabling idle clusters to be powered down."
-    ),
-    backstory=(
-        "You specialize in heterogeneous CPU-capacity workload scheduling."
-    ),
-    tools=[get_cluster_telemetry, schedule_task],
+    goal="Allocate all CPU demand with one batch scheduling call.",
+    backstory="You specialize in heterogeneous CPU-capacity scheduling.",
+    tools=[get_cluster_telemetry, schedule_workload_batch],
     verbose=True,
     llm=specialist_llm,
 )
 
 power_governor_agent = Agent(
     role="Server Power Governor",
-    goal=(
-        "Minimize idle server power while preserving enough active CPU "
-        "capacity for the allocated workload."
-    ),
-    backstory=(
-        "You control cluster power states after workload placement."
-    ),
-    tools=[get_cluster_telemetry, set_host_power],
+    goal="Set every cluster power state safely in one batch call.",
+    backstory="You eliminate idle-server power after workload placement.",
+    tools=[get_cluster_telemetry, set_host_power_batch],
     verbose=True,
     llm=specialist_llm,
 )
 
 compute_agent = Agent(
     role="Integrated Compute Manager",
-    goal=(
-        "Jointly allocate CPU workload and choose cluster power states, "
-        "serving all feasible demand with minimum server energy."
-    ),
-    backstory=(
-        "You combine workload scheduling and power-state control so that "
-        "migration and shutdown decisions cannot conflict."
-    ),
-    tools=[get_cluster_telemetry, schedule_task, set_host_power],
+    goal="Apply one complete CPU allocation and power-state plan.",
+    backstory="You jointly manage workload placement and cluster power.",
+    tools=[get_cluster_telemetry, apply_compute_plan],
     verbose=True,
     llm=specialist_llm,
 )
 
 cooling_agent = Agent(
     role="Data Centre Thermal Manager",
-    goal=(
-        "Keep room temperature within its permitted range while minimizing "
-        "cooling electricity."
-    ),
-    backstory=(
-        "You manage cooling capacity using IT load, room temperature, "
-        "ambient temperature, heat removal, and effective COP."
-    ),
+    goal="Select cooling capacity with one control call.",
+    backstory="You minimize cooling energy within thermal constraints.",
     tools=[get_cluster_telemetry, set_cooling_level],
     verbose=True,
     llm=specialist_llm,
@@ -84,14 +64,8 @@ cooling_agent = Agent(
 
 energy_agent = Agent(
     role="Renewable Energy and Battery Manager",
-    goal=(
-        "Minimize grid cost, use available solar, and operate the battery "
-        "within its SOC and power constraints."
-    ),
-    backstory=(
-        "You coordinate solar, grid, and battery dispatch after compute and "
-        "cooling decisions establish facility demand."
-    ),
+    goal="Select battery dispatch with one control call.",
+    backstory="You coordinate solar, grid price, and battery reserves.",
     tools=[get_cluster_telemetry, dispatch_battery],
     verbose=True,
     llm=specialist_llm,
@@ -99,23 +73,12 @@ energy_agent = Agent(
 
 integrated_ems_agent = Agent(
     role="Integrated Data Centre Energy Management Agent",
-    goal=(
-        "Jointly optimize CPU allocation, cluster power states, cooling, "
-        "solar utilization, and battery dispatch while satisfying workload, "
-        "temperature, battery, and equipment constraints."
-    ),
+    goal="Apply one complete compute, cooling, and battery plan.",
     backstory=(
-        "You are responsible for the complete data-centre control decision. "
-        "You reason across compute, thermal, and electrical interactions "
-        "instead of optimizing each subsystem independently."
+        "You make one globally coordinated decision across compute, "
+        "thermal, and electrical systems."
     ),
-    tools=[
-        get_cluster_telemetry,
-        schedule_task,
-        set_host_power,
-        set_cooling_level,
-        dispatch_battery,
-    ],
+    tools=[get_cluster_telemetry, apply_ems_plan],
     verbose=True,
     llm=integrated_llm,
 )

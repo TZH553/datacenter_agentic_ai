@@ -1,37 +1,62 @@
 from crewai import Crew, Process
 
 from agents import (
-    scheduler_agent,
-    power_governor_agent,
+    compute_agent,
     cooling_agent,
-    energy_agent
+    energy_agent,
+    integrated_ems_agent,
+    power_governor_agent,
+    scheduler_agent,
 )
-
 from tasks import (
-    scheduler_task,
+    compute_task,
+    cooling_task_four,
+    cooling_task_three,
+    energy_task_four,
+    energy_task_three,
+    integrated_task,
     power_task,
-    cooling_task,
-    energy_task
+    scheduler_task,
 )
 
 
-data_center_crew = Crew(
+ARCHITECTURES = ("four_agent", "three_agent", "single_agent")
 
-    agents=[
-        scheduler_agent,
-        power_governor_agent,
-        cooling_agent,
-        energy_agent
-    ],
 
-    tasks=[
-        scheduler_task,
-        power_task,
-        cooling_task,
-        energy_task
-    ],
+def get_data_center_crew(architecture="four_agent"):
+    """Build the selected CrewAI architecture."""
+    if architecture == "four_agent":
+        agents = [
+            scheduler_agent,
+            power_governor_agent,
+            cooling_agent,
+            energy_agent,
+        ]
+        tasks = [
+            scheduler_task,
+            power_task,
+            cooling_task_four,
+            energy_task_four,
+        ]
+    elif architecture == "three_agent":
+        agents = [compute_agent, cooling_agent, energy_agent]
+        tasks = [compute_task, cooling_task_three, energy_task_three]
+    elif architecture == "single_agent":
+        agents = [integrated_ems_agent]
+        tasks = [integrated_task]
+    else:
+        raise ValueError(
+            f"Unknown architecture {architecture!r}; "
+            f"choose one of {ARCHITECTURES}."
+        )
 
-    process=Process.sequential,
+    return Crew(
+        agents=agents,
+        tasks=tasks,
+        process=Process.sequential,
+        verbose=True,
+    )
 
-    verbose=True
-)
+
+# Backward-compatible default.
+data_center_crew = get_data_center_crew("four_agent")

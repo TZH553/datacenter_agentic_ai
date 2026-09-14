@@ -70,28 +70,36 @@ def _set_active_hosts(active_hosts: List[str]) -> None:
         state.hosts[name]["active"] = name in active_set
 
 
-def _set_cooling(cooling_factor: float) -> None:
-    cooling_factor = float(cooling_factor)
-    if not 0.8 <= cooling_factor <= 1.5:
+def _normalise_cooling(cooling_factor: float) -> float:
+    value = float(cooling_factor)
+    if not 0.8 <= value <= 1.5:
         raise ValueError("Cooling factor must be between 0.8 and 1.5.")
-    state.cooling_factor = cooling_factor
+    return value
 
 
-def _set_battery(power_kw: float) -> None:
-    power_kw = float(power_kw)
+def _normalise_battery(power_kw: float) -> float:
+    value = float(power_kw)
     if not (
         -state.battery_max_charge_kw
-        <= power_kw
+        <= value
         <= state.battery_max_discharge_kw
     ):
         raise ValueError(
             "Battery command exceeds charge/discharge power limits."
         )
-    if power_kw > 0 and state.battery_soc <= state.battery_min_soc:
+    if value > 0 and state.battery_soc <= state.battery_min_soc:
         raise ValueError("Battery SOC is too low for discharge.")
-    if power_kw < 0 and state.battery_soc >= state.battery_max_soc:
+    if value < 0 and state.battery_soc >= state.battery_max_soc:
         raise ValueError("Battery SOC is too high for charging.")
-    state.battery_command_kw = power_kw
+    return value
+
+
+def _set_cooling(cooling_factor: float) -> None:
+    state.cooling_factor = _normalise_cooling(cooling_factor)
+
+
+def _set_battery(power_kw: float) -> None:
+    state.battery_command_kw = _normalise_battery(power_kw)
 
 
 @tool("Get cluster telemetry")
@@ -238,14 +246,17 @@ def apply_ems_plan(
     """Atomically apply compute, cooling, and battery decisions in one call."""
     try:
         normalised, assigned_cpu = _normalise_allocations(allocations)
-        _set_cooling(cooling_factor)
-        _set_battery(battery_power_kw)
+        normalised_cooling = _normalise_cooling(cooling_factor)
+        normalised_battery = _normalise_battery(battery_power_kw)
     except (TypeError, ValueError) as error:
         return f"REJECTED: {error}"
 
+    # Mutate state only after every part of the plan has validated.
     for name, utilisation in normalised.items():
         state.hosts[name]["utilisation"] = utilisation
         state.hosts[name]["active"] = utilisation > 0.0
+    state.cooling_factor = normalised_cooling
+    state.battery_command_kw = normalised_battery
 
     active_hosts = [
         name for name, host in state.hosts.items() if host["active"]

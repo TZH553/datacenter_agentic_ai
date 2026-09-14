@@ -1,124 +1,84 @@
-from state import state, reset_state
-
-from workload import add_workload
-
-import time
-
-from concurrent.futures import (
-    ThreadPoolExecutor,
-    TimeoutError
-)
-
-from state import state, reset_state
-
-from controllers import RuleBasedController
-
-from control import apply_action
-
-from models import (
-    calculate_it_power,
-    calculate_cooling_power,
-    update_temperature,
-    update_battery,
-    calculate_grid_power,
-    calculate_cost
-)
-
-from controllers import RuleBasedController
-
 import copy
 import multiprocessing as mp
+import queue
 import time
 import traceback
 
-def _crew_worker(initial_state, result_queue):
-    """
-    Execute CrewAI inside an isolated child process.
+from control import apply_action
+from controllers import RuleBasedController
+from models import (
+    calculate_cooling_power,
+    calculate_cost,
+    calculate_grid_power,
+    calculate_it_power,
+    update_battery,
+    update_temperature,
+)
+from state import reset_state, state
+from workload import add_workload
 
-    CrewAI tools modify the child's copy of `state`. If execution
-    succeeds, the updated state is returned to the parent process.
-    """
+
+def _crew_worker(initial_state, result_queue):
+    """Execute CrewAI in an isolated process and return its updated state."""
     try:
-        # Restore the simulation state inside the child.
         state.__dict__.clear()
         state.__dict__.update(copy.deepcopy(initial_state))
 
-        # Import here so each spawned process initializes CrewAI locally.
         from crew import data_center_crew
 
         crew_result = data_center_crew.kickoff()
-
-        result_queue.put({
-            "status": "success",
-            "state": copy.deepcopy(state.__dict__),
-            "crew_result": str(crew_result),
-        })
-
+        result_queue.put(
+            {
+                "status": "success",
+                "state": copy.deepcopy(state.__dict__),
+                "crew_result": str(crew_result),
+            }
+        )
     except Exception:
-        result_queue.put({
-            "status": "error",
-            "error": traceback.format_exc(),
-        })
+        result_queue.put(
+            {
+                "status": "error",
+                "error": traceback.format_exc(),
+            }
+        )
 
 
 def run_crew_with_timeout(timeout_seconds=60):
-    """
-    Run CrewAI in a process that can be terminated safely.
-
-    Returns:
-        crew_result, timed_out, error_message
-    """
+    """Run CrewAI in a child process that can be stopped on timeout."""
     context = mp.get_context("spawn")
     result_queue = context.Queue()
-
-    initial_state = copy.deepcopy(state.__dict__)
-
     process = context.Process(
         target=_crew_worker,
-        args=(initial_state, result_queue),
+        args=(copy.deepcopy(state.__dict__), result_queue),
     )
-
     process.start()
     process.join(timeout=timeout_seconds)
 
     if process.is_alive():
-        print(
-            f"[WARNING] CrewAI exceeded "
-            f"{timeout_seconds} seconds."
-        )
-
+        print(f"[WARNING] CrewAI exceeded {timeout_seconds} seconds.")
         process.terminate()
         process.join(timeout=5)
-
-        # Escalate if terminate() did not stop it.
         if process.is_alive():
             process.kill()
             process.join()
-
         result_queue.close()
-
         return None, True, None
 
-    if result_queue.empty():
+    try:
+        message = result_queue.get(timeout=2)
+    except queue.Empty:
         result_queue.close()
+        return None, False, "CrewAI exited without returning a result."
 
-        return (
-            None,
-            False,
-            "CrewAI process exited without returning a result.",
-        )
-
-    message = result_queue.get()
     result_queue.close()
 
     if message["status"] == "error":
         return None, False, message["error"]
 
-    # Copy the successful child's state into the parent simulation.
     state.__dict__.clear()
     state.__dict__.update(message["state"])
-
     return message["crew_result"], False, None
+
 
 def run_simulation(
     controller,
@@ -126,324 +86,121 @@ def run_simulation(
     solar_profile,
     price_profile,
     hours,
-    is_agentic=False
+    is_agentic=False,
 ):
-
-    # ==========================================
-    # RESET BEFORE EVERY EXPERIMENT
-    # ==========================================
-
+    """Run all power and energy calculations using one consistent timestep."""
     reset_state()
-
     results = []
+    dt = state.timestep_h
 
     print()
     print("=" * 60)
-
-    if is_agentic:
-        print("Starting CrewAI Agentic EMS")
-    else:
-        print(
-            f"Starting {controller.name}"
-        )
-
+    print("Starting CrewAI Agentic EMS" if is_agentic else f"Starting {controller.name}")
     print("=" * 60)
 
+    if any(len(profile) < hours for profile in (
+        workload_profile, solar_profile, price_profile
+    )):
+        raise ValueError("Every input profile must contain at least 'hours' values.")
 
     for hour in range(hours):
-
-        # ======================================
-        # ENVIRONMENT
-        # ======================================
-
-        state.solar_kw = float(
-            solar_profile[hour]
-        )
-
-        state.grid_price = float(
-            price_profile[hour]
-        )
-
-
-        # ======================================
-        # WORKLOAD
-        # ======================================
-
-        add_workload(
-            workload_profile[hour]
-        )
-
-
-        # ======================================
-        # RESET HOURLY COMMANDS
-        # ======================================
-
+        state.solar_kw = float(solar_profile[hour])
+        state.grid_price = float(price_profile[hour])
+        add_workload(workload_profile[hour])
         state.battery_command_kw = 0.0
-
-
-        # ======================================
-        # CONTROLLER
-        # ======================================
 
         response_time = 0.0
         timed_out = False
         fallback_used = False
 
         if is_agentic:
-            print(
-                f"\n[AGENTIC] Running CrewAI "
-                f"for hour {hour}..."
-            )
-
+            print(f"\n[AGENTIC] Running CrewAI for hour {hour}...")
             start_time = time.perf_counter()
-
-            crew_result, timed_out, crew_error = (
-                run_crew_with_timeout(
-                    timeout_seconds=60
-                )
+            _, timed_out, crew_error = run_crew_with_timeout(
+                timeout_seconds=60
             )
+            response_time = time.perf_counter() - start_time
 
-            response_time = (
-                time.perf_counter() - start_time
-            )
-
-            if timed_out:
-                print(
-                    "[FALLBACK] CrewAI timed out. "
-                    "Using rule-based controller."
-                )
-
+            if timed_out or crew_error is not None:
+                reason = "timed out" if timed_out else "failed"
+                print(f"[FALLBACK] CrewAI {reason}; using rule-based controller.")
+                if crew_error:
+                    print(crew_error)
                 fallback_used = True
-
-                action = RuleBasedController().decide()
-                apply_action(action)
-
-            elif crew_error is not None:
-                print(
-                    "[FALLBACK] CrewAI execution failed:"
-                )
-                print(crew_error)
-
-                fallback_used = True
-
-                action = RuleBasedController().decide()
-                apply_action(action)
-
+                apply_action(RuleBasedController().decide())
             else:
                 print(
                     f"[AGENTIC] CrewAI completed in "
                     f"{response_time:.2f} seconds."
                 )
-
         else:
-            action = controller.decide()
-            apply_action(action)
+            apply_action(controller.decide())
 
-
-        # ======================================
-        # PHYSICAL SIMULATION
-        # ======================================
-
+        # Instantaneous power calculations (kW).
         calculate_it_power()
-
         calculate_cooling_power()
+        state.total_power_kw = state.it_power_kw + state.cooling_power_kw
 
-        state.total_power_kw = (
-            state.it_power_kw
-            + state.cooling_power_kw
-        )
-
-        update_temperature()
-
-        update_battery(
-            dt=1.0
-        )
-
+        # State and supply calculations over dt hours.
+        update_temperature(dt)
+        update_battery(dt)
         calculate_grid_power()
+        calculate_cost(dt)
 
-        calculate_cost(
-            dt=1.0
-        )
+        charge_power_kw = max(0.0, -state.battery_power_kw)
+        discharge_power_kw = max(0.0, state.battery_power_kw)
 
-
-        # ======================================
-        # ADDITIONAL ENERGY METRICS
-        # ======================================
-
-        # Battery discharge:
-        # positive battery power means battery supplying load
-        battery_discharge_kwh = max(
-            0.0,
-            state.battery_power_kw
-        )
-
-        # Battery charge:
-        # negative battery power means battery charging
-        battery_charge_kwh = max(
-            0.0,
-            -state.battery_power_kw
-        )
-
-
-        # Solar actually used by the data centre
-        # or battery charging.
+        # Solar serves facility demand and then battery charging.
         solar_used_kw = min(
             state.solar_kw,
-            state.total_power_kw
-            + battery_charge_kwh
+            state.total_power_kw + charge_power_kw,
         )
+        solar_curtailed_kw = max(0.0, state.solar_kw - solar_used_kw)
 
-        # Solar that could not be used
-        solar_curtailed_kw = max(
-            0.0,
-            state.solar_kw
-            - solar_used_kw
+        assigned_workload = (
+            sum(host["utilisation"] for host in state.hosts.values())
+            / len(state.hosts)
         )
+        unmet_workload = max(0.0, state.pending_workload - assigned_workload)
 
-
-        # ======================================
-        # OTHER METRICS
-        # ======================================
-
-        pue = (
-            state.total_power_kw
-            / max(
-                state.it_power_kw,
-                0.0001
-            )
-        )
-
+        pue = state.total_power_kw / max(state.it_power_kw, 1e-9)
         temperature_violation = int(
-            state.temperature < 19
-            or state.temperature > 27
+            state.temperature < state.min_temp_c
+            or state.temperature > state.max_temp_c
         )
-
-
-        # ======================================
-        # STORE RESULT FOR THIS HOUR
-        # ======================================
 
         result = {
-
-            "hour":
-                hour,
-
-            "workload":
-                float(workload_profile[hour]),
-
-
-            # ==========================================
-            # AGENT METRICS
-            # ==========================================
-
-            "agent_response_time_s":
-                response_time,
-
-            "agent_timed_out":
-                int(timed_out),
-
-            "fallback_used":
-                int(fallback_used),
-
-
-            # ==========================================
-            # POWER
-            # ==========================================
-
-            "IT_power_kw":
-                state.it_power_kw,
-
-            "cooling_power_kw":
-                state.cooling_power_kw,
-
-            "total_power_kw":
-                state.total_power_kw,
-
-            "total_energy_kwh":
-                state.total_power_kw,
-
-
-            # ==========================================
-            # SOLAR
-            # ==========================================
-
-            "solar_kw":
-                state.solar_kw,
-
-            "solar_used_kwh":
-                solar_used_kw,
-
-            "solar_curtailed_kwh":
-                solar_curtailed_kw,
-
-
-            # ==========================================
-            # BATTERY
-            # ==========================================
-
-            "battery_command_kw":
-                state.battery_command_kw,
-
-            "battery_power_kw":
-                state.battery_power_kw,
-
-            "battery_discharge_kwh":
-                battery_discharge_kwh,
-
-            "battery_charge_kwh":
-                battery_charge_kwh,
-
-            "battery_SOC":
-                state.battery_soc,
-
-
-            # ==========================================
-            # GRID
-            # ==========================================
-
-            "grid_power_kw":
-                state.grid_power_kw,
-
-            "grid_energy_kwh":
-                state.grid_power_kw,
-
-
-            # ==========================================
-            # THERMAL
-            # ==========================================
-
-            "temperature_C":
-                state.temperature,
-
-            "temperature_violation":
-                temperature_violation,
-
-
-            # ==========================================
-            # COST
-            # ==========================================
-
-            "electricity_price":
-                state.grid_price,
-
-            "cost":
-                state.cost,
-
-
-            # ==========================================
-            # EFFICIENCY
-            # ==========================================
-
-            "pue":
-                pue
+            "hour": hour,
+            "timestep_h": dt,
+            "workload": float(workload_profile[hour]),
+            "assigned_workload": assigned_workload,
+            "unmet_workload": unmet_workload,
+            "agent_response_time_s": response_time,
+            "agent_timed_out": int(timed_out),
+            "fallback_used": int(fallback_used),
+            "IT_power_kw": state.it_power_kw,
+            "cooling_power_kw": state.cooling_power_kw,
+            "total_power_kw": state.total_power_kw,
+            "IT_energy_kwh": state.it_power_kw * dt,
+            "cooling_energy_kwh": state.cooling_power_kw * dt,
+            "total_energy_kwh": state.total_power_kw * dt,
+            "solar_kw": state.solar_kw,
+            "solar_used_kwh": solar_used_kw * dt,
+            "solar_curtailed_kwh": solar_curtailed_kw * dt,
+            "battery_command_kw": state.battery_command_kw,
+            "battery_power_kw": state.battery_power_kw,
+            "battery_discharge_kwh": discharge_power_kw * dt,
+            "battery_charge_kwh": charge_power_kw * dt,
+            "battery_SOC": state.battery_soc,
+            "grid_power_kw": state.grid_power_kw,
+            "grid_energy_kwh": state.grid_power_kw * dt,
+            "temperature_C": state.temperature,
+            "temperature_violation": temperature_violation,
+            "electricity_price": state.grid_price,
+            "cost": state.cost,
+            "pue": pue,
         }
-
         results.append(result)
-
-
-        # ======================================
-        # HOURLY OUTPUT
-        # ======================================
 
         print(
             f"Hour {hour:03d} | "
@@ -455,6 +212,5 @@ def run_simulation(
             f"Temp={result['temperature_C']:.2f} C | "
             f"Cost=${result['cost']:.2f}"
         )
-
 
     return results

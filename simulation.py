@@ -2,6 +2,28 @@ from state import state, reset_state
 
 from workload import add_workload
 
+import time
+
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    TimeoutError
+)
+
+import pandas as pd
+
+from state import state, reset_state
+
+from models import (
+    calculate_it_power,
+    calculate_cooling_power,
+    update_temperature,
+    update_battery,
+    calculate_grid_power,
+    calculate_cost
+)
+
+from controllers import RuleBasedController
+
 from control import apply_action
 
 from models import (
@@ -13,7 +35,51 @@ from models import (
     calculate_cost
 )
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
+from controllers import RuleBasedController
+
+def run_crew_with_timeout(
+    data_center_crew,
+    timeout_seconds=60
+):
+
+    executor = ThreadPoolExecutor(
+        max_workers=1
+    )
+
+    future = executor.submit(
+        data_center_crew.kickoff
+    )
+
+    try:
+
+        result = future.result(
+            timeout=timeout_seconds
+        )
+
+        executor.shutdown(
+            wait=False
+        )
+
+        return result, False
+
+    except TimeoutError:
+
+        print(
+            f"[WARNING] CrewAI exceeded "
+            f"{timeout_seconds} seconds."
+        )
+
+        future.cancel()
+
+        executor.shutdown(
+            wait=False,
+            cancel_futures=True
+        )
+
+        return None, True
+    
 def run_simulation(
     controller,
     workload_profile,
@@ -79,19 +145,59 @@ def run_simulation(
         # CONTROLLER
         # ======================================
 
+        response_time = 0.0
+        timed_out = False
+        fallback_used = False
+
         if is_agentic:
 
-            # Import here so baseline simulations don't
-            # initialise CrewAI unnecessarily.
             from crew import data_center_crew
+
+            print(
+                f"\n[AGENTIC] Running CrewAI "
+                f"for hour {hour}..."
+            )
 
             data_center_crew.kickoff()
 
-        else:
+            # Import here so baseline simulations don't
+            # initialise CrewAI unnecessarily.
+            start_time = time.perf_counter()
 
-            action = controller.decide()
 
-            apply_action(action)
+            crew_result, timed_out = (
+                run_crew_with_timeout(
+                    data_center_crew,
+                    timeout_seconds=60
+                )
+            )
+
+            response_time = time.perf_counter() - start_time
+
+            print(
+                f"CrewAI execution time: "
+                f"{response_time:.2f} seconds"
+            )
+
+            if timed_out:
+
+                print(
+                    "[FALLBACK] Using rule-based action."
+                )
+
+                fallback_controller = (
+                    RuleBasedController()
+                )
+
+                action = (
+                    fallback_controller.decide()
+                )
+
+            else:
+                print(
+                f"[AGENTIC] CrewAI completed "
+                f"in {response_time:.2f} seconds."
+                )
 
 
         # ======================================
@@ -185,7 +291,25 @@ def run_simulation(
             "workload":
                 float(workload_profile[hour]),
 
-            # Load
+
+            # ==========================================
+            # AGENT METRICS
+            # ==========================================
+
+            "agent_response_time_s":
+                response_time,
+
+            "agent_timed_out":
+                int(timed_out),
+
+            "fallback_used":
+                int(fallback_used),
+
+
+            # ==========================================
+            # POWER
+            # ==========================================
+
             "IT_power_kw":
                 state.it_power_kw,
 
@@ -196,19 +320,27 @@ def run_simulation(
                 state.total_power_kw,
 
             "total_energy_kwh":
-                state.total_power_kw * 1.0,
+                state.total_power_kw,
 
-            # Solar
+
+            # ==========================================
+            # SOLAR
+            # ==========================================
+
             "solar_kw":
                 state.solar_kw,
 
             "solar_used_kwh":
-                solar_used_kw * 1.0,
+                solar_used_kw,
 
             "solar_curtailed_kwh":
-                solar_curtailed_kw * 1.0,
+                solar_curtailed_kw,
 
-            # Battery
+
+            # ==========================================
+            # BATTERY
+            # ==========================================
+
             "battery_command_kw":
                 state.battery_command_kw,
 
@@ -216,36 +348,52 @@ def run_simulation(
                 state.battery_power_kw,
 
             "battery_discharge_kwh":
-                battery_discharge_kwh * 1.0,
+                battery_discharge_kwh,
 
             "battery_charge_kwh":
-                battery_charge_kwh * 1.0,
+                battery_charge_kwh,
 
             "battery_SOC":
                 state.battery_soc,
 
-            # Grid
+
+            # ==========================================
+            # GRID
+            # ==========================================
+
             "grid_power_kw":
                 state.grid_power_kw,
 
             "grid_energy_kwh":
-                state.grid_power_kw * 1.0,
+                state.grid_power_kw,
 
-            # Temperature
+
+            # ==========================================
+            # THERMAL
+            # ==========================================
+
             "temperature_C":
                 state.temperature,
 
             "temperature_violation":
                 temperature_violation,
 
-            # Cost
+
+            # ==========================================
+            # COST
+            # ==========================================
+
             "electricity_price":
                 state.grid_price,
 
             "cost":
                 state.cost,
 
-            # Efficiency
+
+            # ==========================================
+            # EFFICIENCY
+            # ==========================================
+
             "pue":
                 pue
         }

@@ -14,10 +14,43 @@ from controllers import (
 HOURS = 1
 
 
-def calculate_summary(
-    name,
-    df
-):
+def calculate_summary(name, df):
+
+    # ==========================================
+    # AGENTIC AI METRICS
+    # ==========================================
+
+    if name == "CrewAI Agentic EMS":
+
+        avg_agent_time = (
+            df["agent_response_time_s"].mean()
+        )
+
+        max_agent_time = (
+            df["agent_response_time_s"].max()
+        )
+
+        timeouts = (
+            df["agent_timed_out"].sum()
+        )
+
+        fallback_uses = (
+            df["fallback_used"].sum()
+        )
+
+    else:
+
+        # Not applicable to Rule-Based,
+        # Fixed Optimisation, or RL
+        avg_agent_time = None
+        max_agent_time = None
+        timeouts = None
+        fallback_uses = None
+
+
+    # ==========================================
+    # CREATE SUMMARY
+    # ==========================================
 
     return {
 
@@ -25,94 +58,74 @@ def calculate_summary(
             name,
 
         "Total Energy (kWh)":
-            df[
-                "total_energy_kwh"
-            ].sum(),
+            df["total_energy_kwh"].sum(),
 
         "IT Energy (kWh)":
-            df[
-                "IT_power_kw"
-            ].sum(),
+            df["IT_power_kw"].sum(),
 
         "Cooling Energy (kWh)":
-            df[
-                "cooling_power_kw"
-            ].sum(),
+            df["cooling_power_kw"].sum(),
 
         "Grid Energy (kWh)":
-            df[
-                "grid_energy_kwh"
-            ].sum(),
+            df["grid_energy_kwh"].sum(),
 
         "Solar Used (kWh)":
-            df[
-                "solar_used_kwh"
-            ].sum(),
+            df["solar_used_kwh"].sum(),
 
         "Solar Curtailed (kWh)":
-            df[
-                "solar_curtailed_kwh"
-            ].sum(),
+            df["solar_curtailed_kwh"].sum(),
 
         "Battery Discharge (kWh)":
-            df[
-                "battery_discharge_kwh"
-            ].sum(),
+            df["battery_discharge_kwh"].sum(),
 
         "Battery Charge (kWh)":
-            df[
-                "battery_charge_kwh"
-            ].sum(),
+            df["battery_charge_kwh"].sum(),
 
         "Cost":
-            df[
-                "cost"
-            ].sum(),
+            df["cost"].sum(),
 
         "Peak Total Power (kW)":
-            df[
-                "total_power_kw"
-            ].max(),
+            df["total_power_kw"].max(),
 
         "Peak Grid Power (kW)":
-            df[
-                "grid_power_kw"
-            ].max(),
+            df["grid_power_kw"].max(),
 
         "Average PUE":
-            df[
-                "pue"
-            ].mean(),
+            df["pue"].mean(),
 
         "Average Temperature (C)":
-            df[
-                "temperature_C"
-            ].mean(),
+            df["temperature_C"].mean(),
 
         "Max Temperature (C)":
-            df[
-                "temperature_C"
-            ].max(),
+            df["temperature_C"].max(),
 
         "Temperature Violations":
-            df[
-                "temperature_violation"
-            ].sum(),
+            df["temperature_violation"].sum(),
 
         "Minimum SOC":
-            df[
-                "battery_SOC"
-            ].min(),
+            df["battery_SOC"].min(),
 
         "Maximum SOC":
-            df[
-                "battery_SOC"
-            ].max(),
+            df["battery_SOC"].max(),
 
         "Final SOC":
-            df[
-                "battery_SOC"
-            ].iloc[-1]
+            df["battery_SOC"].iloc[-1],
+
+        # ======================================
+        # AGENTIC AI PERFORMANCE
+        # ======================================
+
+        "Average Agent Response Time (s)":
+            avg_agent_time,
+
+        "Max Agent Response Time (s)":
+            max_agent_time,
+
+        "Agent Timeouts":
+            timeouts,
+
+        "Fallback Uses":
+            fallback_uses
     }
 
 def main():
@@ -225,73 +238,35 @@ def main():
 
     summaries = [
 
-    calculate_summary(
-        "Rule-Based EMS",
-        rule_df
-    ),
+        calculate_summary(
+            "Rule-Based EMS",
+            rule_df
+        ),
 
-    calculate_summary(
-        "Fixed Optimisation",
-        opt_df
-    ),
+        calculate_summary(
+            "Fixed Optimisation",
+            opt_df
+        ),
 
-    calculate_summary(
-        "RL Controller",
-        rl_df
-    ),
+        calculate_summary(
+            "RL Controller",
+            rl_df
+        ),
 
-    calculate_summary(
-        "CrewAI Agentic EMS",
-        agentic_df
-    )
+        calculate_summary(
+            "CrewAI Agentic EMS",
+            agentic_df
+        )
     ]
-
 
     summary_df = pd.DataFrame(
         summaries
     )
 
-    main_columns = [
-
-    "System",
-
-    "Total Energy (kWh)",
-
-    "Grid Energy (kWh)",
-
-    "Solar Used (kWh)",
-
-    "Battery Discharge (kWh)",
-
-    "Cost",
-
-    "Peak Grid Power (kW)",
-
-    "Average PUE",
-
-    "Temperature Violations",
-
-    "Final SOC"
-    ]
-
-
-    print()
-    print("=" * 120)
-    print("RQ3 CONTROLLER COMPARISON")
-    print("=" * 120)
-
     print(
-        summary_df[
-            main_columns
-        ].to_string(
+        summary_df.to_string(
             index=False
         )
-    )
-
-
-    summary_df.to_csv(
-        "rq3_comparison.csv",
-        index=False
     )
 
 

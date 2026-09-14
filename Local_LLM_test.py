@@ -1,23 +1,29 @@
+from typing import cast
+
 from openai import OpenAI
+from openai.types.chat import ChatCompletionToolParam
 
 client = OpenAI(
     base_url="http://127.0.0.1:1234/v1",
     api_key="lm-studio"
 )
 
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_cluster_telemetry",
-            "description": "Get the current data-centre telemetry.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
+tools: list[ChatCompletionToolParam] = [
+    cast(
+        ChatCompletionToolParam,
+        {
+            "type": "function",
+            "function": {
+                "name": "get_cluster_telemetry",
+                "description": "Get the current data-centre telemetry.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
             }
-        }
-    }
+        },
+    )
 ]
 
 response = client.chat.completions.create(

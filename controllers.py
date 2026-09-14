@@ -1,3 +1,4 @@
+from models import estimate_cooling
 from state import state
 
 
@@ -45,16 +46,18 @@ def _allocate_workload(target_utilisation):
     return utilisation, power
 
 
-def _predict_temperature(it_power_kw, cooling_power_kw):
+def _predict_temperature(it_power_kw, heat_removed_kw):
     dt = state.timestep_h
-    ambient_effect = (
+    server_heat_kw = it_power_kw * state.server_heat_fraction
+    envelope_heat_kw = (
         state.ambient_temperature - state.temperature
-    ) * state.thermal_decay_per_h * dt
-    net_heat_kwh = (it_power_kw - cooling_power_kw) * dt
+    ) * state.envelope_heat_transfer_kw_per_c
+    net_thermal_energy_kwh = (
+        server_heat_kw + envelope_heat_kw - heat_removed_kw
+    ) * dt
     return (
         state.temperature
-        + ambient_effect
-        + net_heat_kwh * state.thermal_gain_c_per_kwh
+        + net_thermal_energy_kwh / state.thermal_mass_kwh_per_c
     )
 
 
@@ -118,12 +121,17 @@ class FixedOptimisationController:
         best_action = None
 
         for cooling_factor in self.cooling_options:
-            cooling_power_kw = (
-                predicted_it_power_kw / state.cooling_cop * cooling_factor
+            (
+                cooling_power_kw,
+                heat_removed_kw,
+                _,
+            ) = estimate_cooling(
+                predicted_it_power_kw,
+                cooling_factor,
             )
             facility_power_kw = predicted_it_power_kw + cooling_power_kw
             predicted_temp = _predict_temperature(
-                predicted_it_power_kw, cooling_power_kw
+                predicted_it_power_kw, heat_removed_kw
             )
 
             temperature_penalty = 0.0

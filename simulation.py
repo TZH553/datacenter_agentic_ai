@@ -87,9 +87,10 @@ def run_simulation(
     price_profile,
     hours,
     is_agentic=False,
+    config=None,
 ):
     """Run all power and energy calculations using one consistent timestep."""
-    reset_state()
+    reset_state(config)
     results = []
     dt = state.timestep_h
 

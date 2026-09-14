@@ -22,8 +22,8 @@ def _make_llm(max_tokens):
     )
 
 
-specialist_llm = _make_llm(max_tokens=2048)
-integrated_llm = _make_llm(max_tokens=4096)
+specialist_llm = _make_llm(max_tokens=512)
+integrated_llm = _make_llm(max_tokens=1024)
 
 
 scheduler_agent = Agent(

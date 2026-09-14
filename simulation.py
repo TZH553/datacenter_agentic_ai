@@ -56,7 +56,7 @@ def _crew_worker(initial_state, result_queue, architecture):
         )
 
 
-def run_crew_with_timeout(architecture, timeout_seconds=60):
+def run_crew_with_timeout(architecture, timeout_seconds=120):
     """Run CrewAI in a child process that can be stopped on timeout."""
     context = mp.get_context("spawn")
     result_queue = context.Queue()
@@ -111,7 +111,7 @@ def run_simulation(
     is_agentic=False,
     config=None,
     agentic_architecture="four_agent",
-    agent_timeout_seconds=60,
+    agent_timeout_seconds=120,
 ):
     """Run all power and energy calculations using one consistent timestep."""
     reset_state(config)

@@ -10,6 +10,7 @@ from simulation import (
     run_simulation
 )
 
+import multiprocessing as mp
 
 HOURS = 24
 
@@ -168,4 +169,5 @@ def main():
 
 # THIS IS REQUIRED
 if __name__ == "__main__":
+    mp.freeze_support()
     main()

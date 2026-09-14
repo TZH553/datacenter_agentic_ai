@@ -9,18 +9,7 @@ from concurrent.futures import (
     TimeoutError
 )
 
-import pandas as pd
-
 from state import state, reset_state
-
-from models import (
-    calculate_it_power,
-    calculate_cooling_power,
-    update_temperature,
-    update_battery,
-    calculate_grid_power,
-    calculate_cost
-)
 
 from controllers import RuleBasedController
 
@@ -35,51 +24,102 @@ from models import (
     calculate_cost
 )
 
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
-
 from controllers import RuleBasedController
 
-def run_crew_with_timeout(
-    data_center_crew,
-    timeout_seconds=60
-):
+import copy
+import multiprocessing as mp
+import time
+import traceback
 
-    executor = ThreadPoolExecutor(
-        max_workers=1
-    )
+def _crew_worker(initial_state, result_queue):
+    """
+    Execute CrewAI inside an isolated child process.
 
-    future = executor.submit(
-        data_center_crew.kickoff
-    )
-
+    CrewAI tools modify the child's copy of `state`. If execution
+    succeeds, the updated state is returned to the parent process.
+    """
     try:
+        # Restore the simulation state inside the child.
+        state.__dict__.clear()
+        state.__dict__.update(copy.deepcopy(initial_state))
 
-        result = future.result(
-            timeout=timeout_seconds
-        )
+        # Import here so each spawned process initializes CrewAI locally.
+        from crew import data_center_crew
 
-        executor.shutdown(
-            wait=False
-        )
+        crew_result = data_center_crew.kickoff()
 
-        return result, False
+        result_queue.put({
+            "status": "success",
+            "state": copy.deepcopy(state.__dict__),
+            "crew_result": str(crew_result),
+        })
 
-    except TimeoutError:
+    except Exception:
+        result_queue.put({
+            "status": "error",
+            "error": traceback.format_exc(),
+        })
 
+
+def run_crew_with_timeout(timeout_seconds=60):
+    """
+    Run CrewAI in a process that can be terminated safely.
+
+    Returns:
+        crew_result, timed_out, error_message
+    """
+    context = mp.get_context("spawn")
+    result_queue = context.Queue()
+
+    initial_state = copy.deepcopy(state.__dict__)
+
+    process = context.Process(
+        target=_crew_worker,
+        args=(initial_state, result_queue),
+    )
+
+    process.start()
+    process.join(timeout=timeout_seconds)
+
+    if process.is_alive():
         print(
             f"[WARNING] CrewAI exceeded "
             f"{timeout_seconds} seconds."
         )
 
-        future.cancel()
+        process.terminate()
+        process.join(timeout=5)
 
-        executor.shutdown(
-            wait=False,
-            cancel_futures=True
+        # Escalate if terminate() did not stop it.
+        if process.is_alive():
+            process.kill()
+            process.join()
+
+        result_queue.close()
+
+        return None, True, None
+
+    if result_queue.empty():
+        result_queue.close()
+
+        return (
+            None,
+            False,
+            "CrewAI process exited without returning a result.",
         )
 
-        return None, True
-    
+    message = result_queue.get()
+    result_queue.close()
+
+    if message["status"] == "error":
+        return None, False, message["error"]
+
+    # Copy the successful child's state into the parent simulation.
+    state.__dict__.clear()
+    state.__dict__.update(message["state"])
+
+    return message["crew_result"], False, None
+
 def run_simulation(
     controller,
     workload_profile,
@@ -150,54 +190,54 @@ def run_simulation(
         fallback_used = False
 
         if is_agentic:
-
-            from crew import data_center_crew
-
             print(
                 f"\n[AGENTIC] Running CrewAI "
                 f"for hour {hour}..."
             )
 
-            data_center_crew.kickoff()
-
-            # Import here so baseline simulations don't
-            # initialise CrewAI unnecessarily.
             start_time = time.perf_counter()
 
-
-            crew_result, timed_out = (
+            crew_result, timed_out, crew_error = (
                 run_crew_with_timeout(
-                    data_center_crew,
                     timeout_seconds=60
                 )
             )
 
-            response_time = time.perf_counter() - start_time
-
-            print(
-                f"CrewAI execution time: "
-                f"{response_time:.2f} seconds"
+            response_time = (
+                time.perf_counter() - start_time
             )
 
             if timed_out:
-
                 print(
-                    "[FALLBACK] Using rule-based action."
+                    "[FALLBACK] CrewAI timed out. "
+                    "Using rule-based controller."
                 )
 
-                fallback_controller = (
-                    RuleBasedController()
-                )
+                fallback_used = True
 
-                action = (
-                    fallback_controller.decide()
+                action = RuleBasedController().decide()
+                apply_action(action)
+
+            elif crew_error is not None:
+                print(
+                    "[FALLBACK] CrewAI execution failed:"
                 )
+                print(crew_error)
+
+                fallback_used = True
+
+                action = RuleBasedController().decide()
+                apply_action(action)
 
             else:
                 print(
-                f"[AGENTIC] CrewAI completed "
-                f"in {response_time:.2f} seconds."
+                    f"[AGENTIC] CrewAI completed in "
+                    f"{response_time:.2f} seconds."
                 )
+
+        else:
+            action = controller.decide()
+            apply_action(action)
 
 
         # ======================================

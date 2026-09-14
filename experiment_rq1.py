@@ -10,6 +10,7 @@ from controllers import (
     RLController
 )
 
+import multiprocessing as mp
 
 HOURS = 1
 
@@ -271,4 +272,5 @@ def main():
 
 
 if __name__ == "__main__":
+    mp.freeze_support()
     main()

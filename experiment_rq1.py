@@ -15,7 +15,7 @@ from simulation import run_simulation
 # Keep defaults small for an architecture smoke test. Override for final runs:
 # Windows CMD: set EXPERIMENT_HOURS=24
 # PowerShell:  $env:EXPERIMENT_HOURS=24
-HOURS = int(os.getenv("EXPERIMENT_HOURS", "1"))
+HOURS = int(os.getenv("EXPERIMENT_HOURS", "24"))
 AGENT_TIMEOUT_SECONDS = int(os.getenv("AGENT_TIMEOUT_SECONDS", "120"))
 
 

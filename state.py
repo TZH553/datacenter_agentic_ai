@@ -13,16 +13,35 @@ class DataCenterState:
         self.thermal_gain_c_per_kwh = cfg.thermal_gain_c_per_kwh
         self.thermal_decay_per_h = cfg.thermal_decay
 
-        self.hosts = {
-            f"host_{i}": {
+        cluster_specs = cfg.clusters
+        if cluster_specs is None:
+            cluster_specs = tuple(
+                type("_Cluster", (), {
+                    "cpu_capacity": cfg.cpu_capacity,
+                    "p_idle_kw": cfg.p_idle_kw,
+                    "p_max_kw": cfg.p_max_kw,
+                })()
+                for _ in range(cfg.n_clusters)
+            )
+
+        if not cluster_specs:
+            raise ValueError("At least one cluster must be configured.")
+
+        self.hosts = {}
+        for index, cluster in enumerate(cluster_specs, start=1):
+            if cluster.cpu_capacity <= 0:
+                raise ValueError("Cluster CPU capacity must be positive.")
+            if not 0 <= cluster.p_idle_kw <= cluster.p_max_kw:
+                raise ValueError(
+                    "Cluster power must satisfy 0 <= p_idle_kw <= p_max_kw."
+                )
+            self.hosts[f"host_{index}"] = {
                 "active": True,
                 "utilisation": 0.0,
-                "cpu_capacity": float(cfg.cpu_capacity),
-                "p_idle": cfg.p_idle_kw,
-                "p_max": cfg.p_max_kw,
+                "cpu_capacity": float(cluster.cpu_capacity),
+                "p_idle": float(cluster.p_idle_kw),
+                "p_max": float(cluster.p_max_kw),
             }
-            for i in range(1, cfg.n_clusters + 1)
-        }
 
         # Input profiles are fractions, while scheduling uses explicit CPU units.
         self.pending_workload_fraction = 0.0
@@ -62,8 +81,8 @@ class DataCenterState:
 state = DataCenterState()
 
 
-def reset_state():
+def reset_state(config=None):
     """Reset the existing shared object so imported references remain valid."""
-    new_state = DataCenterState()
+    new_state = DataCenterState(config)
     state.__dict__.clear()
     state.__dict__.update(new_state.__dict__)

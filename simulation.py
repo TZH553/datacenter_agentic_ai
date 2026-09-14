@@ -150,13 +150,9 @@ def run_simulation(
 
         charge_power_kw = max(0.0, -state.battery_power_kw)
         discharge_power_kw = max(0.0, state.battery_power_kw)
-
-        # Solar serves facility demand and then battery charging.
-        solar_used_kw = min(
-            state.solar_kw,
-            state.total_power_kw + charge_power_kw,
+        solar_used_kw = (
+            state.solar_to_load_kw + state.solar_to_battery_kw
         )
-        solar_curtailed_kw = max(0.0, state.solar_kw - solar_used_kw)
 
         assigned_workload_cpu = sum(
             host["utilisation"] * host["cpu_capacity"]
@@ -194,13 +190,17 @@ def run_simulation(
             "fallback_used": int(fallback_used),
             "IT_power_kw": state.it_power_kw,
             "cooling_power_kw": state.cooling_power_kw,
+            "cooling_heat_removed_kw": state.cooling_heat_removed_kw,
+            "effective_cooling_cop": state.effective_cooling_cop,
             "total_power_kw": state.total_power_kw,
             "IT_energy_kwh": state.it_power_kw * dt,
             "cooling_energy_kwh": state.cooling_power_kw * dt,
             "total_energy_kwh": state.total_power_kw * dt,
             "solar_kw": state.solar_kw,
             "solar_used_kwh": solar_used_kw * dt,
-            "solar_curtailed_kwh": solar_curtailed_kw * dt,
+            "solar_to_load_kwh": state.solar_to_load_kw * dt,
+            "solar_to_battery_kwh": state.solar_to_battery_kw * dt,
+            "solar_curtailed_kwh": state.solar_curtailed_kw * dt,
             "battery_command_kw": state.battery_command_kw,
             "battery_power_kw": state.battery_power_kw,
             "battery_discharge_kwh": discharge_power_kw * dt,
@@ -208,6 +208,8 @@ def run_simulation(
             "battery_SOC": state.battery_soc,
             "grid_power_kw": state.grid_power_kw,
             "grid_energy_kwh": state.grid_power_kw * dt,
+            "grid_to_load_kwh": state.grid_to_load_kw * dt,
+            "grid_to_battery_kwh": state.grid_to_battery_kw * dt,
             "temperature_C": state.temperature,
             "temperature_violation": temperature_violation,
             "electricity_price": state.grid_price,

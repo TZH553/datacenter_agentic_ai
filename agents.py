@@ -1,148 +1,121 @@
 from crewai import Agent, LLM
 
 from tools import (
+    dispatch_battery,
     get_cluster_telemetry,
     schedule_task,
-    set_host_power,
     set_cooling_level,
-    dispatch_battery
+    set_host_power,
 )
 
-#  model="lm_studio/qwen2.5-7b-instruct",
 
-llm = LLM(
-    model="openai/qwen2.5-7b-instruct",
-    base_url="http://127.0.0.1:1234/v1",
-    api_key="lm-studio",
-    temperature=0.1,
-    stream=False
-)
+def _make_llm(max_tokens):
+    return LLM(
+        model="openai/qwen2.5-7b-instruct",
+        base_url="http://127.0.0.1:1234/v1",
+        api_key="lm-studio",
+        temperature=0.1,
+        stream=False,
+        max_tokens=max_tokens,
+    )
 
-# =========================================================
-# SCHEDULER AGENT
-# =========================================================
+
+specialist_llm = _make_llm(max_tokens=2048)
+integrated_llm = _make_llm(max_tokens=4096)
+
 
 scheduler_agent = Agent(
-
-    role="Data Center Task Scheduler",
-
+    role="Data Centre Task Scheduler",
     goal=(
-        "Assign the current workload across active server hosts "
-        "while minimizing host overload, queue latency and "
-        "unnecessary power consumption."
+        "Allocate all requested CPU units across clusters while avoiding "
+        "overload and enabling idle clusters to be powered down."
     ),
-
     backstory=(
-        "You are an expert data-centre workload scheduler. "
-        "You distribute CPU workload across server hosts and "
-        "try to consolidate workloads when possible so unused "
-        "servers may later be switched off."
+        "You specialize in heterogeneous CPU-capacity workload scheduling."
     ),
-
-    tools=[
-        get_cluster_telemetry,
-        schedule_task
-    ],
-
+    tools=[get_cluster_telemetry, schedule_task],
     verbose=True,
-
-    llm=llm
+    llm=specialist_llm,
 )
-
-
-# =========================================================
-# POWER GOVERNOR AGENT
-# =========================================================
 
 power_governor_agent = Agent(
-
     role="Server Power Governor",
-
     goal=(
-        "Reduce unnecessary server power consumption by "
-        "switching off genuinely idle hosts while preserving "
-        "sufficient compute capacity."
+        "Minimize idle server power while preserving enough active CPU "
+        "capacity for the allocated workload."
     ),
-
     backstory=(
-        "You manage server power states in a data centre. "
-        "A host may only be switched off when its utilisation "
-        "is effectively zero. Never switch off a server that "
-        "still carries workload."
+        "You control cluster power states after workload placement."
     ),
-
-    tools=[
-        get_cluster_telemetry,
-        set_host_power
-    ],
-
+    tools=[get_cluster_telemetry, set_host_power],
     verbose=True,
-
-    llm=llm
+    llm=specialist_llm,
 )
 
-
-# =========================================================
-# COOLING AGENT
-# =========================================================
+compute_agent = Agent(
+    role="Integrated Compute Manager",
+    goal=(
+        "Jointly allocate CPU workload and choose cluster power states, "
+        "serving all feasible demand with minimum server energy."
+    ),
+    backstory=(
+        "You combine workload scheduling and power-state control so that "
+        "migration and shutdown decisions cannot conflict."
+    ),
+    tools=[get_cluster_telemetry, schedule_task, set_host_power],
+    verbose=True,
+    llm=specialist_llm,
+)
 
 cooling_agent = Agent(
-
-    role="Data Center Cooling Controller",
-
+    role="Data Centre Thermal Manager",
     goal=(
-        "Maintain server-room temperature between 19 and "
-        "27 degrees Celsius while minimizing cooling energy."
+        "Keep room temperature within its permitted range while minimizing "
+        "cooling electricity."
     ),
-
     backstory=(
-        "You are a thermal-management specialist responsible "
-        "for data-centre HVAC operation. Excessive cooling "
-        "wastes electricity, while insufficient cooling risks "
-        "thermal violations and equipment damage. You adjust "
-        "the cooling factor according to IT load and "
-        "temperature."
+        "You manage cooling capacity using IT load, room temperature, "
+        "ambient temperature, heat removal, and effective COP."
     ),
-
-    tools=[
-        get_cluster_telemetry,
-        set_cooling_level
-    ],
-
+    tools=[get_cluster_telemetry, set_cooling_level],
     verbose=True,
-
-    llm=llm
+    llm=specialist_llm,
 )
 
-
-# =========================================================
-# ENERGY AGENT
-# =========================================================
-
 energy_agent = Agent(
-
     role="Renewable Energy and Battery Manager",
-
     goal=(
-        "Minimize grid electricity cost while maximizing "
-        "solar-energy utilisation and maintaining sufficient "
-        "battery reserve."
+        "Minimize grid cost, use available solar, and operate the battery "
+        "within its SOC and power constraints."
     ),
-
     backstory=(
-        "You manage the data centre's battery energy storage "
-        "system and renewable generation. You charge the "
-        "battery during periods of renewable surplus or low "
-        "electricity prices and discharge it when electricity "
-        "is expensive, while protecting battery SOC limits."
+        "You coordinate solar, grid, and battery dispatch after compute and "
+        "cooling decisions establish facility demand."
     ),
+    tools=[get_cluster_telemetry, dispatch_battery],
+    verbose=True,
+    llm=specialist_llm,
+)
 
+integrated_ems_agent = Agent(
+    role="Integrated Data Centre Energy Management Agent",
+    goal=(
+        "Jointly optimize CPU allocation, cluster power states, cooling, "
+        "solar utilization, and battery dispatch while satisfying workload, "
+        "temperature, battery, and equipment constraints."
+    ),
+    backstory=(
+        "You are responsible for the complete data-centre control decision. "
+        "You reason across compute, thermal, and electrical interactions "
+        "instead of optimizing each subsystem independently."
+    ),
     tools=[
         get_cluster_telemetry,
-        dispatch_battery
+        schedule_task,
+        set_host_power,
+        set_cooling_level,
+        dispatch_battery,
     ],
-
     verbose=True,
-
-    llm=llm
+    llm=integrated_llm,
 )

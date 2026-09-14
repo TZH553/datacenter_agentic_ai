@@ -10,8 +10,11 @@ class DataCenterState:
         self.timestep_h = cfg.timestep_h
         self.min_temp_c = cfg.min_temp_c
         self.max_temp_c = cfg.max_temp_c
-        self.thermal_gain_c_per_kwh = cfg.thermal_gain_c_per_kwh
-        self.thermal_decay_per_h = cfg.thermal_decay
+        self.server_heat_fraction = cfg.server_heat_fraction
+        self.thermal_mass_kwh_per_c = cfg.thermal_mass_kwh_per_c
+        self.envelope_heat_transfer_kw_per_c = (
+            cfg.envelope_heat_transfer_kw_per_c
+        )
 
         cluster_specs = cfg.clusters
         if cluster_specs is None:
@@ -66,11 +69,26 @@ class DataCenterState:
 
         self.cooling_factor = 1.0
         self.cooling_cop = cfg.cooling_cop
+        self.cooling_min_cop = cfg.cooling_min_cop
+        self.cooling_cop_temp_coefficient = (
+            cfg.cooling_cop_temp_coefficient
+        )
+        self.cooling_nominal_capacity_kw = (
+            cfg.cooling_nominal_capacity_kw
+        )
+        self.cooling_fan_power_kw = cfg.cooling_fan_power_kw
+        self.effective_cooling_cop = cfg.cooling_cop
+        self.cooling_heat_removed_kw = 0.0
 
         self.it_power_kw = 0.0
         self.cooling_power_kw = 0.0
         self.total_power_kw = 0.0
         self.grid_power_kw = 0.0
+        self.solar_to_load_kw = 0.0
+        self.solar_to_battery_kw = 0.0
+        self.grid_to_load_kw = 0.0
+        self.grid_to_battery_kw = 0.0
+        self.solar_curtailed_kw = 0.0
         self.cost = 0.0
 
     @property

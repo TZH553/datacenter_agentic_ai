@@ -2,7 +2,7 @@ from typing import Dict
 
 from crewai.tools import tool
 
-from models import calculate_host_power
+from models import calculate_host_power, estimate_cooling
 from state import state
 
 
@@ -75,7 +75,28 @@ def _normalise_cooling(cooling_factor: float) -> float:
     return value
 
 
-def _normalise_battery(power_kw: float) -> float:
+def _projected_facility_power(
+    allocations: Dict[str, float],
+    cooling_factor: float,
+) -> float:
+    it_power_kw = sum(
+        host["p_idle"]
+        + allocations[name] * (host["p_max"] - host["p_idle"])
+        for name, host in state.hosts.items()
+        if allocations[name] > 0.0
+    )
+    cooling_power_kw, _, _ = estimate_cooling(
+        it_power_kw,
+        cooling_factor,
+    )
+    return it_power_kw + cooling_power_kw
+
+
+def _normalise_battery(
+    power_kw: float,
+    allocations: Dict[str, float] | None = None,
+    cooling_factor: float | None = None,
+) -> float:
     value = float(power_kw)
     if not (
         -state.battery_max_charge_kw
@@ -89,6 +110,37 @@ def _normalise_battery(power_kw: float) -> float:
         raise ValueError("Battery SOC is too low for discharge.")
     if value < 0 and state.battery_soc >= state.battery_max_soc:
         raise ValueError("Battery SOC is too high for charging.")
+
+    if value < 0:
+        if allocations is None:
+            allocations = {
+                name: host["utilisation"]
+                for name, host in state.hosts.items()
+            }
+        if cooling_factor is None:
+            cooling_factor = state.cooling_factor
+
+        facility_power_kw = _projected_facility_power(
+            allocations,
+            cooling_factor,
+        )
+        solar_surplus_kw = max(
+            0.0,
+            state.solar_kw - facility_power_kw,
+        )
+        requested_charge_kw = abs(value)
+        grid_charge_kw = max(
+            0.0,
+            requested_charge_kw - solar_surplus_kw,
+        )
+
+        if grid_charge_kw > 1e-9 and state.grid_price >= 0.18:
+            raise ValueError(
+                f"Charging would use {grid_charge_kw:.2f} kW from the "
+                f"grid at ${state.grid_price:.2f}/kWh. Grid charging is "
+                "allowed only below $0.18/kWh."
+            )
+
     return value
 
 
@@ -228,7 +280,11 @@ def apply_ems_plan(
     try:
         allocations = _build_allocations(target_utilisation)
         normalised_cooling = _normalise_cooling(cooling_factor)
-        normalised_battery = _normalise_battery(battery_power_kw)
+        normalised_battery = _normalise_battery(
+            battery_power_kw,
+            allocations=allocations,
+            cooling_factor=normalised_cooling,
+        )
     except (TypeError, ValueError) as error:
         return f"REJECTED: {error}"
 

@@ -57,6 +57,3 @@ def get_data_center_crew(architecture="four_agent"):
         verbose=True,
     )
 
-
-# Backward-compatible default.
-data_center_crew = get_data_center_crew("four_agent")

@@ -28,11 +28,19 @@ def get_cluster_telemetry() -> str:
         "pending_workload_cpu_units": state.pending_workload_cpu,
         "IT_power_kw": round(state.it_power_kw, 2),
         "cooling_power_kw": round(state.cooling_power_kw, 2),
+        "cooling_heat_removed_kw": round(
+            state.cooling_heat_removed_kw, 2
+        ),
+        "effective_cooling_cop": round(state.effective_cooling_cop, 2),
         "temperature_C": round(state.temperature, 2),
         "solar_kw": round(state.solar_kw, 2),
         "grid_price": state.grid_price,
         "battery_SOC_percent": round(state.battery_soc * 100, 2),
         "grid_power_kw": round(state.grid_power_kw, 2),
+        "solar_to_load_kw": round(state.solar_to_load_kw, 2),
+        "solar_to_battery_kw": round(state.solar_to_battery_kw, 2),
+        "grid_to_load_kw": round(state.grid_to_load_kw, 2),
+        "grid_to_battery_kw": round(state.grid_to_battery_kw, 2),
     }
     return str(telemetry)
 

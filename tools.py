@@ -321,6 +321,19 @@ def apply_ems_plan(
     )
 
 
+# A successful control call is the task's authoritative final output. This
+# prevents an extra LLM turn from delaying completion or inventing new values.
+for _control_tool in (
+    schedule_workload_batch,
+    set_host_power_batch,
+    apply_compute_plan,
+    set_cooling_level,
+    dispatch_battery,
+    apply_ems_plan,
+):
+    setattr(_control_tool, "result_as_answer", True)
+
+
 # Fine-grained tools retained only for manual diagnostics.
 @tool("Schedule one host")
 def schedule_task(host_name: str, utilisation: float) -> str:

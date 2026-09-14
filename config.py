@@ -24,10 +24,15 @@ class Config:
     clusters: Optional[Tuple[ClusterConfig, ...]] = None
 
     cooling_cop: float = 3.5
+    cooling_min_cop: float = 1.5
+    cooling_cop_temp_coefficient: float = 0.03
+    cooling_nominal_capacity_kw: float = 25.0
+    cooling_fan_power_kw: float = 0.50
+    server_heat_fraction: float = 0.95
+    thermal_mass_kwh_per_c: float = 80.0
+    envelope_heat_transfer_kw_per_c: float = 0.50
     ambient_temp_c: float = 24.0
     initial_temp_c: float = 21.0
-    thermal_gain_c_per_kwh: float = 0.035
-    thermal_decay: float = 0.10
     min_temp_c: float = 19.0
     max_temp_c: float = 27.0
 

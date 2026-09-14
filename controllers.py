@@ -1,27 +1,46 @@
-import math
-
 from state import state
 
 
 def _allocate_workload(target_utilisation):
-    """Allocate the total workload fraction across hosts consistently."""
-    host_names = list(state.hosts)
-    total_hosts = len(host_names)
-    total_load = state.pending_workload * total_hosts
+    """Allocate explicit CPU units across heterogeneous clusters.
 
-    required_hosts = max(
-        1,
-        min(total_hosts, math.ceil(total_load / target_utilisation)),
+    Larger clusters are filled first to consolidate demand. The preferred
+    utilisation is used first; capacity up to 100% is used only when total
+    demand cannot otherwise be served.
+    """
+    target = max(0.01, min(1.0, float(target_utilisation)))
+    ordered_hosts = sorted(
+        state.hosts,
+        key=lambda name: state.hosts[name]["cpu_capacity"],
+        reverse=True,
     )
-    # If demand exceeds target capacity, all hosts share it up to 100%.
-    per_host = min(1.0, total_load / required_hosts)
 
-    utilisation = {}
-    power = {}
-    for index, host_name in enumerate(host_names):
-        active = index < required_hosts
-        power[host_name] = active
-        utilisation[host_name] = per_host if active else 0.0
+    utilisation = {name: 0.0 for name in state.hosts}
+    power = {name: False for name in state.hosts}
+    remaining_cpu = state.pending_workload_cpu
+
+    # Preferred operating region.
+    for name in ordered_hosts:
+        if remaining_cpu <= 1e-9:
+            break
+        capacity = state.hosts[name]["cpu_capacity"]
+        assigned_cpu = min(remaining_cpu, capacity * target)
+        utilisation[name] = assigned_cpu / capacity
+        power[name] = True
+        remaining_cpu -= assigned_cpu
+
+    # Use headroom up to 100% if demand exceeds preferred capacity.
+    if remaining_cpu > 1e-9:
+        for name in ordered_hosts:
+            capacity = state.hosts[name]["cpu_capacity"]
+            current_cpu = utilisation[name] * capacity
+            headroom_cpu = capacity - current_cpu
+            extra_cpu = min(remaining_cpu, headroom_cpu)
+            utilisation[name] += extra_cpu / capacity
+            power[name] = True
+            remaining_cpu -= extra_cpu
+            if remaining_cpu <= 1e-9:
+                break
 
     return utilisation, power
 
@@ -91,7 +110,6 @@ class FixedOptimisationController:
             for name, host in state.hosts.items()
             if power[name]
         )
-
         switching_count = sum(
             state.hosts[name]["active"] != power[name] for name in state.hosts
         )
@@ -174,9 +192,9 @@ class FixedOptimisationController:
                     - battery_power_kw,
                 )
                 grid_cost = grid_power_kw * state.grid_price * dt
-                throughput_kwh = abs(battery_power_kw) * dt
                 degradation_cost = (
-                    throughput_kwh
+                    abs(battery_power_kw)
+                    * dt
                     * self.battery_degradation_cost_per_kwh
                 )
                 low_soc_penalty = max(
@@ -185,7 +203,6 @@ class FixedOptimisationController:
                 switching_penalty = (
                     switching_count * self.switching_penalty_weight
                 )
-
                 score = (
                     grid_cost
                     + degradation_cost
@@ -210,7 +227,9 @@ class RLController:
     name = "RL Controller"
 
     def decide(self):
-        target = 0.80 if state.pending_workload > 0.80 else 0.70
+        target = (
+            0.80 if state.pending_workload_fraction > 0.80 else 0.70
+        )
         utilisation, power = _allocate_workload(target)
 
         battery_command_kw = 0.0

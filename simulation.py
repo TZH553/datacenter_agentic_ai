@@ -18,20 +18,27 @@ from state import reset_state, state
 from workload import add_workload
 
 
-def _crew_worker(initial_state, result_queue):
+def _crew_worker(initial_state, result_queue, architecture):
     """Execute CrewAI in an isolated process and return its updated state."""
     try:
         state.__dict__.clear()
         state.__dict__.update(copy.deepcopy(initial_state))
 
-        from crew import data_center_crew
+        from crew import get_data_center_crew
 
+        data_center_crew = get_data_center_crew(architecture)
         crew_result = data_center_crew.kickoff()
+        usage = getattr(crew_result, "token_usage", None)
+        if hasattr(usage, "model_dump"):
+            usage = usage.model_dump()
+        elif not isinstance(usage, dict):
+            usage = {}
         result_queue.put(
             {
                 "status": "success",
                 "state": copy.deepcopy(state.__dict__),
                 "crew_result": str(crew_result),
+                "token_usage": usage,
             }
         )
     except Exception:
@@ -43,13 +50,17 @@ def _crew_worker(initial_state, result_queue):
         )
 
 
-def run_crew_with_timeout(timeout_seconds=60):
+def run_crew_with_timeout(architecture, timeout_seconds=60):
     """Run CrewAI in a child process that can be stopped on timeout."""
     context = mp.get_context("spawn")
     result_queue = context.Queue()
     process = context.Process(
         target=_crew_worker,
-        args=(copy.deepcopy(state.__dict__), result_queue),
+        args=(
+            copy.deepcopy(state.__dict__),
+            result_queue,
+            architecture,
+        ),
     )
     process.start()
     process.join(timeout=timeout_seconds)
@@ -62,22 +73,27 @@ def run_crew_with_timeout(timeout_seconds=60):
             process.kill()
             process.join()
         result_queue.close()
-        return None, True, None
+        return None, True, None, {}
 
     try:
         message = result_queue.get(timeout=2)
     except queue.Empty:
         result_queue.close()
-        return None, False, "CrewAI exited without returning a result."
+        return None, False, "CrewAI exited without returning a result.", {}
 
     result_queue.close()
 
     if message["status"] == "error":
-        return None, False, message["error"]
+        return None, False, message["error"], {}
 
     state.__dict__.clear()
     state.__dict__.update(message["state"])
-    return message["crew_result"], False, None
+    return (
+        message["crew_result"],
+        False,
+        None,
+        message.get("token_usage", {}),
+    )
 
 
 def run_simulation(
@@ -88,6 +104,8 @@ def run_simulation(
     hours,
     is_agentic=False,
     config=None,
+    agentic_architecture="four_agent",
+    agent_timeout_seconds=60,
 ):
     """Run all power and energy calculations using one consistent timestep."""
     reset_state(config)
@@ -96,13 +114,24 @@ def run_simulation(
 
     print()
     print("=" * 60)
-    print("Starting CrewAI Agentic EMS" if is_agentic else f"Starting {controller.name}")
+    print(
+        f"Starting CrewAI {agentic_architecture}"
+        if is_agentic
+        else f"Starting {controller.name}"
+    )
     print("=" * 60)
 
     if any(len(profile) < hours for profile in (
         workload_profile, solar_profile, price_profile
     )):
         raise ValueError("Every input profile must contain at least 'hours' values.")
+
+    if is_agentic:
+        from crew import ARCHITECTURES
+        if agentic_architecture not in ARCHITECTURES:
+            raise ValueError(
+                f"agentic_architecture must be one of {ARCHITECTURES}"
+            )
 
     for hour in range(hours):
         state.solar_kw = float(solar_profile[hour])
@@ -113,12 +142,19 @@ def run_simulation(
         response_time = 0.0
         timed_out = False
         fallback_used = False
+        token_usage = {}
 
         if is_agentic:
             print(f"\n[AGENTIC] Running CrewAI for hour {hour}...")
             start_time = time.perf_counter()
-            _, timed_out, crew_error = run_crew_with_timeout(
-                timeout_seconds=60
+            (
+                _,
+                timed_out,
+                crew_error,
+                token_usage,
+            ) = run_crew_with_timeout(
+                architecture=agentic_architecture,
+                timeout_seconds=agent_timeout_seconds,
             )
             response_time = time.perf_counter() - start_time
 
@@ -188,6 +224,18 @@ def run_simulation(
             "agent_response_time_s": response_time,
             "agent_timed_out": int(timed_out),
             "fallback_used": int(fallback_used),
+            "agentic_architecture": (
+                agentic_architecture if is_agentic else "not_applicable"
+            ),
+            "agent_prompt_tokens": int(
+                token_usage.get("prompt_tokens", 0) or 0
+            ),
+            "agent_completion_tokens": int(
+                token_usage.get("completion_tokens", 0) or 0
+            ),
+            "agent_total_tokens": int(
+                token_usage.get("total_tokens", 0) or 0
+            ),
             "IT_power_kw": state.it_power_kw,
             "cooling_power_kw": state.cooling_power_kw,
             "cooling_heat_removed_kw": state.cooling_heat_removed_kw,

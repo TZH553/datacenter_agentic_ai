@@ -32,6 +32,7 @@ scheduler_agent = Agent(
     backstory="You specialize in heterogeneous CPU-capacity scheduling.",
     tools=[get_cluster_telemetry, schedule_workload_batch],
     verbose=True,
+    max_iter=5,
     llm=specialist_llm,
 )
 
@@ -41,6 +42,7 @@ power_governor_agent = Agent(
     backstory="You eliminate idle-server power after workload placement.",
     tools=[get_cluster_telemetry, set_host_power_batch],
     verbose=True,
+    max_iter=5,
     llm=specialist_llm,
 )
 
@@ -50,6 +52,7 @@ compute_agent = Agent(
     backstory="You jointly manage workload placement and cluster power.",
     tools=[get_cluster_telemetry, apply_compute_plan],
     verbose=True,
+    max_iter=5,
     llm=specialist_llm,
 )
 
@@ -59,6 +62,7 @@ cooling_agent = Agent(
     backstory="You minimize cooling energy within thermal constraints.",
     tools=[get_cluster_telemetry, set_cooling_level],
     verbose=True,
+    max_iter=5,
     llm=specialist_llm,
 )
 
@@ -68,6 +72,7 @@ energy_agent = Agent(
     backstory="You coordinate solar, grid price, and battery reserves.",
     tools=[get_cluster_telemetry, dispatch_battery],
     verbose=True,
+    max_iter=5,
     llm=specialist_llm,
 )
 
@@ -80,5 +85,6 @@ integrated_ems_agent = Agent(
     ),
     tools=[get_cluster_telemetry, apply_ems_plan],
     verbose=True,
+    max_iter=5,
     llm=integrated_llm,
 )

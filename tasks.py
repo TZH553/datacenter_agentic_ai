@@ -32,8 +32,10 @@ Keep temperature between 19 C and 27 C. Choose cooling_factor from 0.8 to
 
 ENERGY_RULES = """
 Choose battery power in kW. Positive discharges and negative charges. Stay
-within 10%-95% SOC and plus or minus 60 kW. Prefer solar, consider discharge
-at high grid price, and preserve battery reserve.
+within 10%-95% SOC and plus or minus 60 kW. Use solar surplus for charging. Grid charging is allowed only when price is
+strictly below $0.18/kWh. At normal or high prices, choose zero or discharge;
+never charge from the grid. Consider discharge above $0.35/kWh when SOC is
+sufficient, and preserve battery reserve.
 """
 
 

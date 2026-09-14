@@ -157,11 +157,20 @@ def run_simulation(
         )
         solar_curtailed_kw = max(0.0, state.solar_kw - solar_used_kw)
 
-        assigned_workload = (
-            sum(host["utilisation"] for host in state.hosts.values())
-            / len(state.hosts)
+        assigned_workload_cpu = sum(
+            host["utilisation"] * host["cpu_capacity"]
+            for host in state.hosts.values()
         )
-        unmet_workload = max(0.0, state.pending_workload - assigned_workload)
+        unmet_workload_cpu = max(
+            0.0,
+            state.pending_workload_cpu - assigned_workload_cpu,
+        )
+        assigned_workload = (
+            assigned_workload_cpu / state.total_cpu_capacity
+        )
+        unmet_workload = (
+            unmet_workload_cpu / state.total_cpu_capacity
+        )
 
         pue = state.total_power_kw / max(state.it_power_kw, 1e-9)
         temperature_violation = int(
@@ -172,9 +181,13 @@ def run_simulation(
         result = {
             "hour": hour,
             "timestep_h": dt,
-            "workload": float(workload_profile[hour]),
+            "workload": state.pending_workload_fraction,
+            "workload_cpu_units": state.pending_workload_cpu,
+            "total_cpu_capacity": state.total_cpu_capacity,
             "assigned_workload": assigned_workload,
+            "assigned_workload_cpu_units": assigned_workload_cpu,
             "unmet_workload": unmet_workload,
+            "unmet_workload_cpu_units": unmet_workload_cpu,
             "agent_response_time_s": response_time,
             "agent_timed_out": int(timed_out),
             "fallback_used": int(fallback_used),

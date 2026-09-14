@@ -17,15 +17,16 @@ class DataCenterState:
             f"host_{i}": {
                 "active": True,
                 "utilisation": 0.0,
-                "cpu_capacity": cfg.cpu_capacity,
+                "cpu_capacity": float(cfg.cpu_capacity),
                 "p_idle": cfg.p_idle_kw,
                 "p_max": cfg.p_max_kw,
             }
             for i in range(1, cfg.n_clusters + 1)
         }
 
-        # Workload is a fraction of total installed CPU capacity.
-        self.pending_workload = 0.0
+        # Input profiles are fractions, while scheduling uses explicit CPU units.
+        self.pending_workload_fraction = 0.0
+        self.pending_workload_cpu = 0.0
 
         self.temperature = cfg.initial_temp_c
         self.ambient_temperature = cfg.ambient_temp_c
@@ -52,6 +53,10 @@ class DataCenterState:
         self.total_power_kw = 0.0
         self.grid_power_kw = 0.0
         self.cost = 0.0
+
+    @property
+    def total_cpu_capacity(self):
+        return sum(host["cpu_capacity"] for host in self.hosts.values())
 
 
 state = DataCenterState()

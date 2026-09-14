@@ -13,8 +13,9 @@ from agents import (
 COMMON_LIMITS = """
 Call Get cluster telemetry exactly once. Then call the required control tool
 exactly once. All control inputs are simple numbers; never construct a host
-dictionary or perform host-by-host calls. If the tool returns ACCEPTED,
-finish immediately. Retry only when it returns REJECTED.
+dictionary or perform host-by-host calls. The control tool's returned text is
+the authoritative result; do not restate, recalculate, or replace its values.
+A control tool result completes the task.
 """
 
 COMPUTE_RULES = """
@@ -54,7 +55,6 @@ loaded hosts on and turns zero-utilisation hosts off.
 """,
     expected_output="Accepted deterministic host-power plan.",
     agent=power_governor_agent,
-    context=[scheduler_task],
 )
 
 compute_task = Task(
@@ -71,7 +71,6 @@ Call Set cooling level once with only cooling_factor.
 """,
     expected_output="Accepted cooling factor.",
     agent=cooling_agent,
-    context=[scheduler_task, power_task],
 )
 
 cooling_task_three = Task(
@@ -80,7 +79,6 @@ Call Set cooling level once with only cooling_factor.
 """,
     expected_output="Accepted cooling factor.",
     agent=cooling_agent,
-    context=[compute_task],
 )
 
 energy_task_four = Task(
@@ -89,7 +87,6 @@ Call Dispatch battery once with only power_kw.
 """,
     expected_output="Accepted battery command.",
     agent=energy_agent,
-    context=[scheduler_task, power_task, cooling_task_four],
 )
 
 energy_task_three = Task(
@@ -98,7 +95,6 @@ Call Dispatch battery once with only power_kw.
 """,
     expected_output="Accepted battery command.",
     agent=energy_agent,
-    context=[compute_task, cooling_task_three],
 )
 
 integrated_task = Task(

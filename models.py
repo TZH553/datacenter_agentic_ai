@@ -5,7 +5,6 @@ def calculate_host_power(host):
     """Return host electrical power in kW."""
     if not host["active"]:
         return 0.0
-
     utilisation = max(0.0, min(1.0, float(host["utilisation"])))
     return host["p_idle"] + utilisation * (host["p_max"] - host["p_idle"])
 
@@ -18,48 +17,95 @@ def calculate_it_power():
     return state.it_power_kw
 
 
-def calculate_cooling_power():
-    """Calculate cooling electrical power in kW.
+def estimate_cooling(
+    it_power_kw,
+    cooling_factor,
+    temperature_c=None,
+    ambient_temperature_c=None,
+):
+    """Estimate cooling electricity and heat removal.
 
-    Base cooling power is IT heat load divided by COP. cooling_factor
-    represents the controller's relative cooling effort.
+    Cooling factor controls available thermal-removal capacity rather than
+    multiplying IT power. COP degrades as outdoor temperature rises, and fan
+    power is incurred whenever cooling operates.
     """
-    state.cooling_power_kw = (
-        state.it_power_kw / state.cooling_cop * state.cooling_factor
+    temperature_c = (
+        state.temperature if temperature_c is None else temperature_c
     )
+    ambient_temperature_c = (
+        state.ambient_temperature
+        if ambient_temperature_c is None
+        else ambient_temperature_c
+    )
+
+    server_heat_kw = it_power_kw * state.server_heat_fraction
+    envelope_heat_kw = (
+        ambient_temperature_c - temperature_c
+    ) * state.envelope_heat_transfer_kw_per_c
+
+    # Do not deliberately cool below the configured minimum temperature.
+    thermal_load_kw = max(0.0, server_heat_kw + envelope_heat_kw)
+    if temperature_c <= state.min_temp_c:
+        thermal_load_kw = min(
+            thermal_load_kw,
+            max(0.0, server_heat_kw + min(0.0, envelope_heat_kw)),
+        )
+
+    available_capacity_kw = (
+        state.cooling_nominal_capacity_kw * cooling_factor
+    )
+    heat_removed_kw = min(thermal_load_kw, available_capacity_kw)
+
+    ambient_penalty = max(0.0, ambient_temperature_c - 20.0)
+    effective_cop = max(
+        state.cooling_min_cop,
+        state.cooling_cop
+        - state.cooling_cop_temp_coefficient * ambient_penalty,
+    )
+
+    fan_power_kw = (
+        state.cooling_fan_power_kw * cooling_factor
+        if heat_removed_kw > 0
+        else 0.0
+    )
+    electrical_power_kw = heat_removed_kw / effective_cop + fan_power_kw
+    return electrical_power_kw, heat_removed_kw, effective_cop
+
+
+def calculate_cooling_power():
+    """Calculate cooling power from thermal load and plant performance."""
+    (
+        state.cooling_power_kw,
+        state.cooling_heat_removed_kw,
+        state.effective_cooling_cop,
+    ) = estimate_cooling(state.it_power_kw, state.cooling_factor)
     return state.cooling_power_kw
 
 
 def update_temperature(dt=None):
-    """Advance room temperature by one timestep.
-
-    thermal_gain_c_per_kwh converts net thermal energy to temperature rise.
-    thermal_decay_per_h is the hourly ambient coupling coefficient.
-    """
+    """Advance room temperature using a thermal energy balance."""
     dt = state.timestep_h if dt is None else float(dt)
+    if dt <= 0:
+        raise ValueError("dt must be positive")
 
-    ambient_effect = (
+    server_heat_kw = state.it_power_kw * state.server_heat_fraction
+    envelope_heat_kw = (
         state.ambient_temperature - state.temperature
-    ) * state.thermal_decay_per_h * dt
-
-    net_heat_kwh = (
-        state.it_power_kw - state.cooling_power_kw
+    ) * state.envelope_heat_transfer_kw_per_c
+    net_thermal_energy_kwh = (
+        server_heat_kw
+        + envelope_heat_kw
+        - state.cooling_heat_removed_kw
     ) * dt
 
     state.temperature += (
-        ambient_effect
-        + net_heat_kwh * state.thermal_gain_c_per_kwh
+        net_thermal_energy_kwh / state.thermal_mass_kwh_per_c
     )
     return state.temperature
 
 
 def update_battery(dt=None):
-    """Apply the battery command and update SOC.
-
-    Positive battery power is discharge; negative battery power is charge.
-    Power is kW, energy is power multiplied by dt in hours, and SOC is a
-    dimensionless fraction.
-    """
+    """Apply battery command; positive discharges and negative charges."""
     dt = state.timestep_h if dt is None else float(dt)
     if dt <= 0:
         raise ValueError("dt must be positive")
@@ -68,8 +114,9 @@ def update_battery(dt=None):
     capacity_kwh = state.battery_capacity_kwh
 
     if command_kw > 0:
+        solar_to_load_kw = min(state.solar_kw, state.total_power_kw)
         residual_load_kw = max(
-            0.0, state.total_power_kw - state.solar_kw
+            0.0, state.total_power_kw - solar_to_load_kw
         )
         usable_energy_kwh = max(
             0.0,
@@ -78,17 +125,18 @@ def update_battery(dt=None):
         soc_limited_power_kw = (
             usable_energy_kwh * state.battery_discharge_efficiency / dt
         )
-
         actual_power_kw = min(
             command_kw,
             state.battery_max_discharge_kw,
             residual_load_kw,
             soc_limited_power_kw,
         )
-        energy_removed_kwh = (
-            actual_power_kw * dt / state.battery_discharge_efficiency
+        state.battery_soc -= (
+            actual_power_kw
+            * dt
+            / state.battery_discharge_efficiency
+            / capacity_kwh
         )
-        state.battery_soc -= energy_removed_kwh / capacity_kwh
         state.battery_power_kw = actual_power_kw
 
     elif command_kw < 0:
@@ -104,10 +152,12 @@ def update_battery(dt=None):
             state.battery_max_charge_kw,
             soc_limited_power_kw,
         )
-        stored_energy_kwh = (
-            actual_charge_kw * dt * state.battery_charge_efficiency
+        state.battery_soc += (
+            actual_charge_kw
+            * dt
+            * state.battery_charge_efficiency
+            / capacity_kwh
         )
-        state.battery_soc += stored_energy_kwh / capacity_kwh
         state.battery_power_kw = -actual_charge_kw
 
     else:
@@ -121,16 +171,36 @@ def update_battery(dt=None):
 
 
 def calculate_grid_power():
-    """Balance instantaneous power in kW.
+    """Route solar, battery, and grid power explicitly.
 
-    grid + solar + battery_discharge = facility + battery_charge.
-    With signed battery_power_kw this becomes:
-    grid = facility - solar - battery_power.
+    Priority is solar-to-load, battery discharge-to-load, grid-to-load,
+    solar surplus-to-battery, then grid-to-battery.
     """
     state.total_power_kw = state.it_power_kw + state.cooling_power_kw
-    state.grid_power_kw = max(
-        0.0,
-        state.total_power_kw - state.solar_kw - state.battery_power_kw,
+    charge_kw = max(0.0, -state.battery_power_kw)
+    discharge_kw = max(0.0, state.battery_power_kw)
+
+    state.solar_to_load_kw = min(state.solar_kw, state.total_power_kw)
+    remaining_load_kw = state.total_power_kw - state.solar_to_load_kw
+
+    battery_to_load_kw = min(discharge_kw, remaining_load_kw)
+    state.grid_to_load_kw = max(
+        0.0, remaining_load_kw - battery_to_load_kw
+    )
+
+    solar_surplus_kw = max(
+        0.0, state.solar_kw - state.solar_to_load_kw
+    )
+    state.solar_to_battery_kw = min(charge_kw, solar_surplus_kw)
+    state.grid_to_battery_kw = max(
+        0.0, charge_kw - state.solar_to_battery_kw
+    )
+    state.solar_curtailed_kw = max(
+        0.0, solar_surplus_kw - state.solar_to_battery_kw
+    )
+
+    state.grid_power_kw = (
+        state.grid_to_load_kw + state.grid_to_battery_kw
     )
     return state.grid_power_kw
 

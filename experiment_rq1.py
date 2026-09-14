@@ -1,4 +1,5 @@
 import multiprocessing as mp
+import os
 
 import pandas as pd
 
@@ -11,12 +12,14 @@ from environment import generate_environment
 from simulation import run_simulation
 
 
-HOURS = 24
+# Keep defaults small for an architecture smoke test. Override for final runs:
+# Windows CMD: set EXPERIMENT_HOURS=24
+# PowerShell:  $env:EXPERIMENT_HOURS=24
+HOURS = int(os.getenv("EXPERIMENT_HOURS", "1"))
+AGENT_TIMEOUT_SECONDS = int(os.getenv("AGENT_TIMEOUT_SECONDS", "60"))
 
 
-def calculate_summary(name, df):
-    is_agentic = name == "CrewAI Agentic EMS"
-
+def calculate_summary(name, df, is_agentic):
     return {
         "System": name,
         "Total Energy (kWh)": df["total_energy_kwh"].sum(),
@@ -56,6 +59,15 @@ def calculate_summary(name, df):
         "Fallback Uses": (
             df["fallback_used"].sum() if is_agentic else None
         ),
+        "Prompt Tokens": (
+            df["agent_prompt_tokens"].sum() if is_agentic else None
+        ),
+        "Completion Tokens": (
+            df["agent_completion_tokens"].sum() if is_agentic else None
+        ),
+        "Total Tokens": (
+            df["agent_total_tokens"].sum() if is_agentic else None
+        ),
     }
 
 
@@ -63,30 +75,71 @@ def main():
     workload, solar, price = generate_environment(HOURS)
 
     systems = [
-        ("Rule-Based EMS", RuleBasedController(), False, "rq3_rule_based_hourly.csv"),
-        (
-            "Fixed Optimisation",
-            FixedOptimisationController(),
-            False,
-            "rq3_fixed_optimisation_hourly.csv",
-        ),
-        ("RL Controller", RLController(), False, "rq3_rl_hourly.csv"),
-        ("CrewAI Agentic EMS", None, True, "rq3_agentic_hourly.csv"),
+        {
+            "name": "Rule-Based EMS",
+            "controller": RuleBasedController(),
+            "is_agentic": False,
+            "architecture": "four_agent",
+            "output": "rq3_rule_based_hourly.csv",
+        },
+        {
+            "name": "Fixed Optimisation",
+            "controller": FixedOptimisationController(),
+            "is_agentic": False,
+            "architecture": "four_agent",
+            "output": "rq3_fixed_optimisation_hourly.csv",
+        },
+        {
+            "name": "RL Controller",
+            "controller": RLController(),
+            "is_agentic": False,
+            "architecture": "four_agent",
+            "output": "rq3_rl_hourly.csv",
+        },
+        {
+            "name": "CrewAI Four-Agent",
+            "controller": None,
+            "is_agentic": True,
+            "architecture": "four_agent",
+            "output": "rq3_agentic_four_hourly.csv",
+        },
+        {
+            "name": "CrewAI Three-Agent",
+            "controller": None,
+            "is_agentic": True,
+            "architecture": "three_agent",
+            "output": "rq3_agentic_three_hourly.csv",
+        },
+        {
+            "name": "CrewAI Single-Agent",
+            "controller": None,
+            "is_agentic": True,
+            "architecture": "single_agent",
+            "output": "rq3_agentic_single_hourly.csv",
+        },
     ]
 
     summaries = []
-    for name, controller, is_agentic, output_path in systems:
+    for system in systems:
         results = run_simulation(
-            controller=controller,
+            controller=system["controller"],
             workload_profile=workload,
             solar_profile=solar,
             price_profile=price,
             hours=HOURS,
-            is_agentic=is_agentic,
+            is_agentic=system["is_agentic"],
+            agentic_architecture=system["architecture"],
+            agent_timeout_seconds=AGENT_TIMEOUT_SECONDS,
         )
         df = pd.DataFrame(results)
-        df.to_csv(output_path, index=False)
-        summaries.append(calculate_summary(name, df))
+        df.to_csv(system["output"], index=False)
+        summaries.append(
+            calculate_summary(
+                system["name"],
+                df,
+                system["is_agentic"],
+            )
+        )
 
     summary_df = pd.DataFrame(summaries)
     summary_df.to_csv("rq3_summary.csv", index=False)

@@ -28,17 +28,23 @@ def _crew_worker(initial_state, result_queue, architecture):
 
         data_center_crew = get_data_center_crew(architecture)
         crew_result = data_center_crew.kickoff()
-        usage = getattr(crew_result, "token_usage", None)
-        if hasattr(usage, "model_dump"):
-            usage = usage.model_dump()
-        elif not isinstance(usage, dict):
-            usage = {}
+        raw_usage = getattr(crew_result, "token_usage", None)
+        token_usage = {}
+
+        if raw_usage is not None:
+            dump_method = getattr(raw_usage, "model_dump", None)
+            if callable(dump_method):
+                dumped_usage = dump_method()
+                if isinstance(dumped_usage, dict):
+                    token_usage = dumped_usage
+            elif isinstance(raw_usage, dict):
+                token_usage = raw_usage
         result_queue.put(
             {
                 "status": "success",
                 "state": copy.deepcopy(state.__dict__),
                 "crew_result": str(crew_result),
-                "token_usage": usage,
+                "token_usage": token_usage,
             }
         )
     except Exception:

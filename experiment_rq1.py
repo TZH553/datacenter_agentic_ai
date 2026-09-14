@@ -24,7 +24,11 @@ def calculate_summary(name, df):
         "Cooling Energy (kWh)": df["cooling_energy_kwh"].sum(),
         "Grid Energy (kWh)": df["grid_energy_kwh"].sum(),
         "Solar Used (kWh)": df["solar_used_kwh"].sum(),
+        "Solar to Load (kWh)": df["solar_to_load_kwh"].sum(),
+        "Solar to Battery (kWh)": df["solar_to_battery_kwh"].sum(),
         "Solar Curtailed (kWh)": df["solar_curtailed_kwh"].sum(),
+        "Grid to Load (kWh)": df["grid_to_load_kwh"].sum(),
+        "Grid to Battery (kWh)": df["grid_to_battery_kwh"].sum(),
         "Battery Discharge (kWh)": df["battery_discharge_kwh"].sum(),
         "Battery Charge (kWh)": df["battery_charge_kwh"].sum(),
         "Unmet Workload (fraction-hours)": (

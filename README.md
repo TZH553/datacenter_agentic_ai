@@ -73,3 +73,44 @@ results = run_simulation(
 
 For a workload fraction of 0.50, these clusters have 400 total CPU units and
 therefore receive 200 CPU units of demand.
+
+## Agent architecture comparison
+
+The experiment compares the same physical simulation under three CrewAI
+architectures:
+
+- `four_agent`: scheduler, power governor, thermal manager, energy manager
+- `three_agent`: combined compute manager, thermal manager, energy manager
+- `single_agent`: one integrated EMS agent with all control tools
+
+The specialist agents allow up to 2,048 output tokens per task. The integrated
+single agent allows up to 4,096 output tokens for its larger decision.
+
+Start LM Studio with the `qwen2.5-7b-instruct` model and its OpenAI-compatible
+server at `http://127.0.0.1:1234/v1`. Then run a one-hour smoke test:
+
+```bash
+python experiment_rq1.py
+```
+
+For a longer final experiment on Windows Command Prompt:
+
+```bat
+set EXPERIMENT_HOURS=24
+set AGENT_TIMEOUT_SECONDS=180
+python experiment_rq1.py
+```
+
+For PowerShell:
+
+```powershell
+$env:EXPERIMENT_HOURS=24
+$env:AGENT_TIMEOUT_SECONDS=180
+python experiment_rq1.py
+```
+
+All architectures receive the same input profiles and each call to
+`run_simulation` resets the physical state. Results are saved to separate
+hourly CSV files and combined in `rq3_summary.csv`. The summary includes
+energy, cost, PUE, temperature, unmet workload, response time, timeout,
+fallback, and token-use metrics.

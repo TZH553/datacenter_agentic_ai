@@ -1,4 +1,4 @@
-from config import Config
+from config import ClusterConfig, Config
 
 
 class DataCenterState:
@@ -16,11 +16,11 @@ class DataCenterState:
         cluster_specs = cfg.clusters
         if cluster_specs is None:
             cluster_specs = tuple(
-                type("_Cluster", (), {
-                    "cpu_capacity": cfg.cpu_capacity,
-                    "p_idle_kw": cfg.p_idle_kw,
-                    "p_max_kw": cfg.p_max_kw,
-                })()
+                ClusterConfig(
+                    cpu_capacity=cfg.cpu_capacity,
+                    p_idle_kw=cfg.p_idle_kw,
+                    p_max_kw=cfg.p_max_kw,
+                )
                 for _ in range(cfg.n_clusters)
             )
 

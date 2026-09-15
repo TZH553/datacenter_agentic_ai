@@ -3,6 +3,7 @@ from crewai import Agent, LLM
 from tools import (
     apply_compute_plan,
     apply_ems_plan,
+    apply_facility_energy_plan,
     dispatch_battery,
     get_cluster_telemetry,
     schedule_workload_batch,
@@ -47,9 +48,15 @@ power_governor_agent = Agent(
 )
 
 compute_agent = Agent(
-    role="Integrated Compute Manager",
-    goal="Apply one complete CPU allocation and power-state plan.",
-    backstory="You jointly manage workload placement and cluster power.",
+    role="Scheduler and Consolidation Manager",
+    goal=(
+        "Schedule interactive and batch demand, consolidate workload, and "
+        "set cluster power states in one compute plan."
+    ),
+    backstory=(
+        "You protect interactive service while shifting flexible batch work "
+        "and consolidating it onto the fewest suitable clusters."
+    ),
     tools=[get_cluster_telemetry, apply_compute_plan],
     verbose=True,
     max_iter=3,
@@ -71,6 +78,19 @@ energy_agent = Agent(
     goal="Select battery dispatch with one control call.",
     backstory="You coordinate solar, grid price, and battery reserves.",
     tools=[get_cluster_telemetry, dispatch_battery],
+    verbose=True,
+    max_iter=3,
+    llm=specialist_llm,
+)
+
+facility_energy_agent = Agent(
+    role="Thermal and Electrical Energy Manager",
+    goal="Jointly choose cooling capacity, cooling setpoint, and battery dispatch.",
+    backstory=(
+        "You coordinate thermal safety, cooling efficiency, renewable energy, "
+        "grid price, battery reserve, and facility power risk."
+    ),
+    tools=[get_cluster_telemetry, apply_facility_energy_plan],
     verbose=True,
     max_iter=3,
     llm=specialist_llm,

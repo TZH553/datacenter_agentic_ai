@@ -20,5 +20,8 @@ def apply_action(action):
 
 
     state.cooling_factor = action["cooling_factor"]
+    state.cooling_setpoint_c = action.get(
+        "cooling_setpoint_c", state.cooling_setpoint_c
+    )
 
     state.battery_command_kw = action["battery_command_kw"]

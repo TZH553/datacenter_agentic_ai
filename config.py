@@ -28,13 +28,23 @@ class Config:
     cooling_cop_temp_coefficient: float = 0.03
     cooling_nominal_capacity_kw: float = 25.0
     cooling_fan_power_kw: float = 0.50
+    cooling_setpoint_c: float = 22.0
+    cooling_min_setpoint_c: float = 19.2
+    cooling_max_setpoint_c: float = 22.8
     server_heat_fraction: float = 0.95
     thermal_mass_kwh_per_c: float = 80.0
     envelope_heat_transfer_kw_per_c: float = 0.50
     ambient_temp_c: float = 24.0
     initial_temp_c: float = 21.0
-    min_temp_c: float = 19.0
-    max_temp_c: float = 27.0
+    min_temp_c: float = 19.2
+    max_temp_c: float = 22.8
+
+    facility_power_capacity_kw: float = 35.0
+    power_risk_warning_fraction: float = 0.80
+    power_risk_critical_fraction: float = 0.95
+
+    interactive_workload_fraction: float = 0.70
+    batch_deadline_h: int = 4
 
     battery_capacity_kwh: float = 300.0
     initial_soc: float = 0.70

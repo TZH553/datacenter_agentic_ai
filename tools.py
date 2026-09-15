@@ -4,9 +4,13 @@ from crewai.tools import tool
 
 from models import calculate_host_power, estimate_cooling
 from state import state
+from workload import select_batch_service
 
 
-def _build_allocations(target_utilisation: float) -> Dict[str, float]:
+def _build_allocations(
+    target_utilisation: float,
+    batch_service_fraction: float = 1.0,
+) -> Dict[str, float]:
     """Deterministically allocate CPU demand across heterogeneous hosts."""
     target = float(target_utilisation)
     if not 0.50 <= target <= 1.0:
@@ -14,6 +18,7 @@ def _build_allocations(target_utilisation: float) -> Dict[str, float]:
             "Target utilisation must be between 0.50 and 1.00."
         )
 
+    select_batch_service(batch_service_fraction)
     ordered_hosts = sorted(
         state.hosts,
         key=lambda name: state.hosts[name]["cpu_capacity"],
@@ -75,9 +80,20 @@ def _normalise_cooling(cooling_factor: float) -> float:
     return value
 
 
+def _normalise_setpoint(cooling_setpoint_c: float) -> float:
+    value = float(cooling_setpoint_c)
+    if not state.cooling_min_setpoint_c <= value <= state.cooling_max_setpoint_c:
+        raise ValueError(
+            f"Cooling setpoint must be between {state.cooling_min_setpoint_c} "
+            f"and {state.cooling_max_setpoint_c} C."
+        )
+    return value
+
+
 def _projected_facility_power(
     allocations: Dict[str, float],
     cooling_factor: float,
+    cooling_setpoint_c: float | None = None,
 ) -> float:
     it_power_kw = sum(
         host["p_idle"]
@@ -88,8 +104,26 @@ def _projected_facility_power(
     cooling_power_kw, _, _ = estimate_cooling(
         it_power_kw,
         cooling_factor,
+        cooling_setpoint_c=cooling_setpoint_c,
     )
     return it_power_kw + cooling_power_kw
+
+
+def _enforce_power_cap(
+    allocations: Dict[str, float],
+    cooling_factor: float,
+    cooling_setpoint_c: float | None = None,
+) -> float:
+    projected_kw = _projected_facility_power(
+        allocations, cooling_factor, cooling_setpoint_c
+    )
+    if projected_kw > state.facility_power_capacity_kw + 1e-9:
+        raise ValueError(
+            f"Projected facility power {projected_kw:.2f} kW exceeds "
+            f"the {state.facility_power_capacity_kw:.2f} kW power cap. "
+            "Reduce flexible batch service or cooling demand."
+        )
+    return projected_kw
 
 
 def _normalise_battery(
@@ -166,6 +200,11 @@ def get_cluster_telemetry() -> str:
             "pending_workload_cpu_units": round(
                 state.pending_workload_cpu, 2
             ),
+            "interactive_workload_cpu_units": round(state.interactive_workload_cpu, 2),
+            "batch_backlog_cpu_units": round(state.batch_backlog_cpu, 2),
+            "nearest_batch_deadline_h": min(
+                (job["hours_left"] for job in state.batch_backlog), default=None
+            ),
             "temperature_C": round(state.temperature, 2),
             "temperature_range_C": [
                 state.min_temp_c,
@@ -174,6 +213,7 @@ def get_cluster_telemetry() -> str:
             "IT_power_kw": round(state.it_power_kw, 2),
             "cooling_power_kw": round(state.cooling_power_kw, 2),
             "cooling_factor": state.cooling_factor,
+            "cooling_setpoint_C": state.cooling_setpoint_c,
             "effective_cooling_cop": round(
                 state.effective_cooling_cop, 2
             ),
@@ -183,22 +223,33 @@ def get_cluster_telemetry() -> str:
                 state.battery_soc * 100, 2
             ),
             "battery_command_kw": state.battery_command_kw,
+            "facility_power_capacity_kw": state.facility_power_capacity_kw,
+            "power_risk_ratio": round(state.power_risk_ratio, 4),
         }
     )
 
 
 @tool("Schedule all workload")
-def schedule_workload_batch(target_utilisation: float) -> str:
+def schedule_workload_batch(
+    target_utilisation: float,
+    batch_service_fraction: float = 1.0,
+) -> str:
     """Allocate all CPU demand deterministically in one call.
 
     The agent chooses only a preferred target utilisation from 0.50 to 1.00.
     Deterministic code calculates every per-host allocation.
     """
     try:
-        assigned_cpu = _apply_allocations(
-            target_utilisation,
-            derive_power_states=False,
+        allocations = _build_allocations(
+            target_utilisation, batch_service_fraction
         )
+        _enforce_power_cap(
+            allocations, state.cooling_factor, state.cooling_setpoint_c
+        )
+        assigned_cpu = 0.0
+        for name, utilisation in allocations.items():
+            state.hosts[name]["utilisation"] = utilisation
+            assigned_cpu += utilisation * state.hosts[name]["cpu_capacity"]
     except (TypeError, ValueError) as error:
         return f"REJECTED: {error}"
 
@@ -219,13 +270,23 @@ def set_host_power_batch() -> str:
 
 
 @tool("Apply complete compute plan")
-def apply_compute_plan(target_utilisation: float) -> str:
+def apply_compute_plan(
+    target_utilisation: float,
+    batch_service_fraction: float = 1.0,
+) -> str:
     """Allocate all CPU demand and derive every host power state."""
     try:
-        assigned_cpu = _apply_allocations(
-            target_utilisation,
-            derive_power_states=True,
+        allocations = _build_allocations(
+            target_utilisation, batch_service_fraction
         )
+        _enforce_power_cap(
+            allocations, state.cooling_factor, state.cooling_setpoint_c
+        )
+        assigned_cpu = 0.0
+        for name, utilisation in allocations.items():
+            state.hosts[name]["utilisation"] = utilisation
+            state.hosts[name]["active"] = utilisation > 0.0
+            assigned_cpu += utilisation * state.hosts[name]["cpu_capacity"]
     except (TypeError, ValueError) as error:
         return f"REJECTED: {error}"
 
@@ -239,15 +300,46 @@ def apply_compute_plan(target_utilisation: float) -> str:
 
 
 @tool("Set cooling level")
-def set_cooling_level(cooling_factor: float) -> str:
+def set_cooling_level(
+    cooling_factor: float,
+    cooling_setpoint_c: float = 22.0,
+) -> str:
     """Set relative cooling capacity from 0.8 to 1.5."""
     try:
         state.cooling_factor = _normalise_cooling(cooling_factor)
+        state.cooling_setpoint_c = _normalise_setpoint(cooling_setpoint_c)
     except (TypeError, ValueError) as error:
         return f"REJECTED: {error}"
     return (
-        f"ACCEPTED: cooling factor is {state.cooling_factor:.2f}. "
+        f"ACCEPTED: cooling factor is {state.cooling_factor:.2f}; "
+        f"setpoint is {state.cooling_setpoint_c:.1f} C. "
         "Finish this task now."
+    )
+
+
+@tool("Apply facility energy plan")
+def apply_facility_energy_plan(
+    cooling_factor: float,
+    cooling_setpoint_c: float,
+    battery_power_kw: float,
+) -> str:
+    """Jointly control cooling and the battery for the two-agent model."""
+    try:
+        factor = _normalise_cooling(cooling_factor)
+        setpoint = _normalise_setpoint(cooling_setpoint_c)
+        allocations = {
+            name: host["utilisation"] for name, host in state.hosts.items()
+        }
+        _enforce_power_cap(allocations, factor, setpoint)
+        battery = _normalise_battery(battery_power_kw, cooling_factor=factor)
+    except (TypeError, ValueError) as error:
+        return f"REJECTED: {error}"
+    state.cooling_factor = factor
+    state.cooling_setpoint_c = setpoint
+    state.battery_command_kw = battery
+    return (
+        f"ACCEPTED: cooling factor {factor:.2f}, setpoint {setpoint:.1f} C, "
+        f"battery {battery:.2f} kW. Finish now."
     )
 
 
@@ -279,6 +371,8 @@ def apply_ems_plan(
     target_utilisation: float,
     cooling_factor: float,
     battery_power_kw: float,
+    batch_service_fraction: float = 1.0,
+    cooling_setpoint_c: float = 22.0,
 ) -> str:
     """Apply compute, cooling, and battery decisions atomically.
 
@@ -286,8 +380,14 @@ def apply_ems_plan(
     """
     requested_battery_kw = float(battery_power_kw)
     try:
-        allocations = _build_allocations(target_utilisation)
+        allocations = _build_allocations(
+            target_utilisation, batch_service_fraction
+        )
         normalised_cooling = _normalise_cooling(cooling_factor)
+        normalised_setpoint = _normalise_setpoint(cooling_setpoint_c)
+        _enforce_power_cap(
+            allocations, normalised_cooling, normalised_setpoint
+        )
         normalised_battery = _normalise_battery(
             requested_battery_kw,
             allocations=allocations,
@@ -302,6 +402,7 @@ def apply_ems_plan(
         state.hosts[name]["active"] = utilisation > 0.0
         assigned_cpu += utilisation * state.hosts[name]["cpu_capacity"]
     state.cooling_factor = normalised_cooling
+    state.cooling_setpoint_c = normalised_setpoint
     state.battery_command_kw = normalised_battery
 
     active_hosts = [
@@ -328,6 +429,7 @@ for _control_tool in (
     set_host_power_batch,
     apply_compute_plan,
     set_cooling_level,
+    apply_facility_energy_plan,
     dispatch_battery,
     apply_ems_plan,
 ):

@@ -12,6 +12,9 @@ class DataCenterState:
         self.max_temp_c = cfg.max_temp_c
         self.server_heat_fraction = cfg.server_heat_fraction
         self.thermal_mass_kwh_per_c = cfg.thermal_mass_kwh_per_c
+        self.thermal_control_time_constant_h = (
+            cfg.thermal_control_time_constant_h
+        )
         self.envelope_heat_transfer_kw_per_c = (
             cfg.envelope_heat_transfer_kw_per_c
         )
@@ -102,6 +105,10 @@ class DataCenterState:
         self.solar_curtailed_kw = 0.0
         self.cost = 0.0
         self.facility_power_capacity_kw = cfg.facility_power_capacity_kw
+        self.facility_operating_limit_kw = (
+            cfg.facility_power_capacity_kw
+            * cfg.facility_operating_limit_fraction
+        )
         self.power_risk_warning_fraction = cfg.power_risk_warning_fraction
         self.power_risk_critical_fraction = cfg.power_risk_critical_fraction
         self.power_risk_ratio = 0.0

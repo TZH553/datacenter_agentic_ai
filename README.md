@@ -114,3 +114,20 @@ All architectures receive the same input profiles and each call to
 hourly CSV files and combined in `rq3_summary.csv`. The summary includes
 energy, cost, PUE, temperature, unmet workload, response time, timeout,
 fallback, and token-use metrics.
+# Literature-grounded simulation extensions
+
+The simulator now includes:
+
+- dynamic room temperature with ambient-temperature and thermal-mass effects;
+- cooling-capacity and 19.2-22.8 C setpoint control with setpoint/ambient-dependent COP;
+- interactive demand plus deadline-constrained, deferrable batch workloads;
+- a deterministic facility power cap with normal, warning, and critical risk levels;
+- `two_agent`, where the Scheduler and Consolidation Manager jointly performs
+  workload placement, batch shifting, consolidation, and host power control,
+  while the Thermal and Electrical Energy Manager coordinates cooling and the
+  battery.
+
+`experiment_rq1.py` evaluates `four_agent`, `three_agent`, `two_agent`, and
+`single_agent` configurations alongside the non-agentic baselines. It writes
+two-agent hourly output to `rq3_agentic_two_hourly.csv` and includes deadline,
+power-risk, power-cap, ambient-temperature, cooling-setpoint, and COP metrics.

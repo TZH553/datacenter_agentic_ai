@@ -49,6 +49,14 @@ class DataCenterState:
         # Input profiles are fractions, while scheduling uses explicit CPU units.
         self.pending_workload_fraction = 0.0
         self.pending_workload_cpu = 0.0
+        self.interactive_workload_cpu = 0.0
+        self.batch_arrival_cpu = 0.0
+        self.batch_backlog = []
+        self.batch_backlog_cpu = 0.0
+        self.batch_served_cpu = 0.0
+        self.batch_deadline_missed_cpu = 0.0
+        self.interactive_workload_fraction = cfg.interactive_workload_fraction
+        self.batch_deadline_h = cfg.batch_deadline_h
 
         self.temperature = cfg.initial_temp_c
         self.ambient_temperature = cfg.ambient_temp_c
@@ -68,6 +76,9 @@ class DataCenterState:
         self.battery_power_kw = 0.0
 
         self.cooling_factor = 1.0
+        self.cooling_setpoint_c = cfg.cooling_setpoint_c
+        self.cooling_min_setpoint_c = cfg.cooling_min_setpoint_c
+        self.cooling_max_setpoint_c = cfg.cooling_max_setpoint_c
         self.cooling_cop = cfg.cooling_cop
         self.cooling_min_cop = cfg.cooling_min_cop
         self.cooling_cop_temp_coefficient = (
@@ -90,6 +101,10 @@ class DataCenterState:
         self.grid_to_battery_kw = 0.0
         self.solar_curtailed_kw = 0.0
         self.cost = 0.0
+        self.facility_power_capacity_kw = cfg.facility_power_capacity_kw
+        self.power_risk_warning_fraction = cfg.power_risk_warning_fraction
+        self.power_risk_critical_fraction = cfg.power_risk_critical_fraction
+        self.power_risk_ratio = 0.0
 
     @property
     def total_cpu_capacity(self):

@@ -45,11 +45,17 @@ def calculate_summary(name, df, is_agentic):
         "Max Temperature (C)": df["temperature_C"].max(),
         "Temperature Violations": df["temperature_violation"].sum(),
         "Power Cap Violations": df["power_cap_violation"].sum(),
+        "Operating Limit Violations": df[
+            "operating_limit_violation"
+        ].sum(),
         "Maximum Power Risk Ratio": df["power_risk_ratio"].max(),
         "Batch Deadline Missed CPU-Hours": (
             df["batch_deadline_missed_cpu_units"] * df["timestep_h"]
         ).sum(),
         "Average Batch Backlog CPU": df["batch_backlog_cpu_units"].mean(),
+        "Final Batch Backlog CPU": df[
+            "batch_backlog_cpu_units"
+        ].iloc[-1],
         "Minimum SOC": df["battery_SOC"].min(),
         "Maximum SOC": df["battery_SOC"].max(),
         "Final SOC": df["battery_SOC"].iloc[-1],

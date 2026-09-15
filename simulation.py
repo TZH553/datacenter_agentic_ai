@@ -15,7 +15,7 @@ from models import (
     update_temperature,
 )
 from state import reset_state, state
-from workload import add_workload
+from workload import add_workload, advance_batch_queue
 
 
 def _crew_worker(initial_state, result_queue, architecture):
@@ -108,6 +108,7 @@ def run_simulation(
     solar_profile,
     price_profile,
     hours,
+    ambient_profile=None,
     is_agentic=False,
     config=None,
     agentic_architecture="four_agent",
@@ -131,6 +132,8 @@ def run_simulation(
         workload_profile, solar_profile, price_profile
     )):
         raise ValueError("Every input profile must contain at least 'hours' values.")
+    if ambient_profile is not None and len(ambient_profile) < hours:
+        raise ValueError("ambient_profile must contain at least 'hours' values.")
 
     if is_agentic:
         from crew import ARCHITECTURES
@@ -142,6 +145,8 @@ def run_simulation(
     for hour in range(hours):
         state.solar_kw = float(solar_profile[hour])
         state.grid_price = float(price_profile[hour])
+        if ambient_profile is not None:
+            state.ambient_temperature = float(ambient_profile[hour])
         add_workload(workload_profile[hour])
         state.battery_command_kw = 0.0
 
@@ -216,6 +221,17 @@ def run_simulation(
             state.temperature < state.min_temp_c
             or state.temperature > state.max_temp_c
         )
+        power_cap_violation = int(
+            state.total_power_kw > state.facility_power_capacity_kw
+        )
+        if state.power_risk_ratio >= state.power_risk_critical_fraction:
+            power_risk_level = "critical"
+        elif state.power_risk_ratio >= state.power_risk_warning_fraction:
+            power_risk_level = "warning"
+        else:
+            power_risk_level = "normal"
+
+        deadline_missed_cpu = advance_batch_queue()
 
         result = {
             "hour": hour,
@@ -227,6 +243,11 @@ def run_simulation(
             "assigned_workload_cpu_units": assigned_workload_cpu,
             "unmet_workload": unmet_workload,
             "unmet_workload_cpu_units": unmet_workload_cpu,
+            "interactive_workload_cpu_units": state.interactive_workload_cpu,
+            "batch_arrival_cpu_units": state.batch_arrival_cpu,
+            "batch_served_cpu_units": state.batch_served_cpu,
+            "batch_backlog_cpu_units": state.batch_backlog_cpu,
+            "batch_deadline_missed_cpu_units": deadline_missed_cpu,
             "agent_response_time_s": response_time,
             "agent_timed_out": int(timed_out),
             "fallback_used": int(fallback_used),
@@ -246,6 +267,8 @@ def run_simulation(
             "cooling_power_kw": state.cooling_power_kw,
             "cooling_heat_removed_kw": state.cooling_heat_removed_kw,
             "effective_cooling_cop": state.effective_cooling_cop,
+            "cooling_setpoint_C": state.cooling_setpoint_c,
+            "ambient_temperature_C": state.ambient_temperature,
             "total_power_kw": state.total_power_kw,
             "IT_energy_kwh": state.it_power_kw * dt,
             "cooling_energy_kwh": state.cooling_power_kw * dt,
@@ -261,6 +284,10 @@ def run_simulation(
             "battery_charge_kwh": charge_power_kw * dt,
             "battery_SOC": state.battery_soc,
             "grid_power_kw": state.grid_power_kw,
+            "facility_power_capacity_kw": state.facility_power_capacity_kw,
+            "power_risk_ratio": state.power_risk_ratio,
+            "power_risk_level": power_risk_level,
+            "power_cap_violation": power_cap_violation,
             "grid_energy_kwh": state.grid_power_kw * dt,
             "grid_to_load_kwh": state.grid_to_load_kw * dt,
             "grid_to_battery_kwh": state.grid_to_battery_kw * dt,

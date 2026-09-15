@@ -33,6 +33,7 @@ class Config:
     cooling_max_setpoint_c: float = 22.8
     server_heat_fraction: float = 0.95
     thermal_mass_kwh_per_c: float = 80.0
+    thermal_control_time_constant_h: float = 2.0
     envelope_heat_transfer_kw_per_c: float = 0.50
     ambient_temp_c: float = 24.0
     initial_temp_c: float = 21.0
@@ -40,6 +41,7 @@ class Config:
     max_temp_c: float = 22.8
 
     facility_power_capacity_kw: float = 35.0
+    facility_operating_limit_fraction: float = 0.95
     power_risk_warning_fraction: float = 0.80
     power_risk_critical_fraction: float = 0.95
 

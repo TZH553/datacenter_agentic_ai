@@ -4,6 +4,7 @@ from agents import (
     compute_agent,
     cooling_agent,
     energy_agent,
+    facility_energy_agent,
     integrated_ems_agent,
     power_governor_agent,
     scheduler_agent,
@@ -24,11 +25,17 @@ hosts active with more headroom; a higher target consolidates demand and
 usually reduces idle power. Prefer 0.90 unless current conditions justify
 another value. Deterministic code calculates all individual allocations and
 serves all feasible CPU demand.
+Choose batch_service_fraction between 0.00 and 1.00. Interactive demand is
+mandatory. Flexible batch work may be delayed during high price, low solar,
+high temperature, or high power risk, but work at its deadline is forced by
+the deterministic scheduler.
 """
 
 COOLING_RULES = """
-Keep temperature between 19 C and 27 C. Choose cooling_factor from 0.8 to
-1.5. Minimize cooling electricity without causing a thermal violation.
+Keep temperature between 19.2 C and 22.8 C. Choose cooling_factor from 0.8 to
+1.5 and cooling_setpoint_c from 19.2 to 22.8 C. Minimize cooling electricity
+without causing a thermal violation. Higher setpoints improve COP but leave
+less thermal safety margin.
 """
 
 ENERGY_RULES = """
@@ -42,7 +49,8 @@ sufficient, and preserve battery reserve.
 
 scheduler_task = Task(
     description=COMMON_LIMITS + COMPUTE_RULES + """
-Call Schedule all workload once with only target_utilisation.
+Call Schedule all workload once with target_utilisation and
+batch_service_fraction.
 """,
     expected_output="Accepted deterministic CPU allocation.",
     agent=scheduler_agent,
@@ -59,15 +67,26 @@ loaded hosts on and turns zero-utilisation hosts off.
 
 compute_task = Task(
     description=COMMON_LIMITS + COMPUTE_RULES + """
-Call Apply complete compute plan once with only target_utilisation.
+Call Apply complete compute plan once with target_utilisation and
+batch_service_fraction.
 """,
     expected_output="Accepted compute and power plan.",
     agent=compute_agent,
 )
 
+facility_energy_task = Task(
+    description=COMMON_LIMITS + COOLING_RULES + ENERGY_RULES + """
+Call Apply facility energy plan once with cooling_factor,
+cooling_setpoint_c, and battery_power_kw. Keep projected facility power below
+the stated capacity and avoid the critical power-risk region.
+""",
+    expected_output="Accepted joint thermal and electrical plan.",
+    agent=facility_energy_agent,
+)
+
 cooling_task_four = Task(
     description=COMMON_LIMITS + COOLING_RULES + """
-Call Set cooling level once with only cooling_factor.
+Call Set cooling level once with cooling_factor and cooling_setpoint_c.
 """,
     expected_output="Accepted cooling factor.",
     agent=cooling_agent,
@@ -75,7 +94,7 @@ Call Set cooling level once with only cooling_factor.
 
 cooling_task_three = Task(
     description=COMMON_LIMITS + COOLING_RULES + """
-Call Set cooling level once with only cooling_factor.
+Call Set cooling level once with cooling_factor and cooling_setpoint_c.
 """,
     expected_output="Accepted cooling factor.",
     agent=cooling_agent,
@@ -99,8 +118,9 @@ Call Dispatch battery once with only power_kw.
 
 integrated_task = Task(
     description=COMMON_LIMITS + COMPUTE_RULES + COOLING_RULES + ENERGY_RULES + """
-Call Apply complete EMS plan once with exactly three scalar arguments:
-target_utilisation, cooling_factor, and battery_power_kw.
+Call Apply complete EMS plan once with exactly five scalar arguments:
+target_utilisation, cooling_factor, battery_power_kw,
+batch_service_fraction, and cooling_setpoint_c.
 """,
     expected_output="Accepted complete EMS plan.",
     agent=integrated_ems_agent,

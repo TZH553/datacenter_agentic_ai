@@ -44,6 +44,12 @@ def calculate_summary(name, df, is_agentic):
         "Average Temperature (C)": df["temperature_C"].mean(),
         "Max Temperature (C)": df["temperature_C"].max(),
         "Temperature Violations": df["temperature_violation"].sum(),
+        "Power Cap Violations": df["power_cap_violation"].sum(),
+        "Maximum Power Risk Ratio": df["power_risk_ratio"].max(),
+        "Batch Deadline Missed CPU-Hours": (
+            df["batch_deadline_missed_cpu_units"] * df["timestep_h"]
+        ).sum(),
+        "Average Batch Backlog CPU": df["batch_backlog_cpu_units"].mean(),
         "Minimum SOC": df["battery_SOC"].min(),
         "Maximum SOC": df["battery_SOC"].max(),
         "Final SOC": df["battery_SOC"].iloc[-1],
@@ -72,7 +78,9 @@ def calculate_summary(name, df, is_agentic):
 
 
 def main():
-    workload, solar, price = generate_environment(HOURS)
+    workload, solar, price, ambient = generate_environment(
+        HOURS, include_ambient=True
+    )
 
     systems = [
         {
@@ -111,6 +119,13 @@ def main():
             "output": "rq3_agentic_three_hourly.csv",
         },
         {
+            "name": "CrewAI Two-Agent",
+            "controller": None,
+            "is_agentic": True,
+            "architecture": "two_agent",
+            "output": "rq3_agentic_two_hourly.csv",
+        },
+        {
             "name": "CrewAI Single-Agent",
             "controller": None,
             "is_agentic": True,
@@ -126,6 +141,7 @@ def main():
             workload_profile=workload,
             solar_profile=solar,
             price_profile=price,
+            ambient_profile=ambient,
             hours=HOURS,
             is_agentic=system["is_agentic"],
             agentic_architecture=system["architecture"],

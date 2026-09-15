@@ -159,7 +159,7 @@ def run_simulation(
             print(f"\n[AGENTIC] Running CrewAI for hour {hour}...")
             start_time = time.perf_counter()
             (
-                _,
+                crew_output,
                 timed_out,
                 crew_error,
                 token_usage,
@@ -181,6 +181,26 @@ def run_simulation(
                     f"[AGENTIC] CrewAI completed in "
                     f"{response_time:.2f} seconds."
                 )
+
+                # A rejected/missing compute call must never leave the prior
+                # hour's utilisation in place. Tool-level fallback normally
+                # prevents this; this boundary check is the final safeguard.
+                assigned_cpu = sum(
+                    host["utilisation"] * host["cpu_capacity"]
+                    for host in state.hosts.values()
+                )
+                allocation_tolerance = max(
+                    1e-6, 0.005 * state.pending_workload_cpu
+                )
+                if abs(assigned_cpu - state.pending_workload_cpu) > allocation_tolerance:
+                    print(
+                        "[FALLBACK] Agentic compute plan was incomplete; "
+                        "applying the current-hour rule-based plan."
+                    )
+                    if crew_output:
+                        print(f"[AGENT OUTPUT] {crew_output}")
+                    fallback_used = True
+                    apply_action(RuleBasedController().decide())
         else:
             apply_action(controller.decide())
 
@@ -223,6 +243,9 @@ def run_simulation(
         )
         power_cap_violation = int(
             state.total_power_kw > state.facility_power_capacity_kw
+        )
+        operating_limit_violation = int(
+            state.total_power_kw > state.facility_operating_limit_kw
         )
         if state.power_risk_ratio >= state.power_risk_critical_fraction:
             power_risk_level = "critical"
@@ -285,9 +308,11 @@ def run_simulation(
             "battery_SOC": state.battery_soc,
             "grid_power_kw": state.grid_power_kw,
             "facility_power_capacity_kw": state.facility_power_capacity_kw,
+            "facility_operating_limit_kw": state.facility_operating_limit_kw,
             "power_risk_ratio": state.power_risk_ratio,
             "power_risk_level": power_risk_level,
             "power_cap_violation": power_cap_violation,
+            "operating_limit_violation": operating_limit_violation,
             "grid_energy_kwh": state.grid_power_kw * dt,
             "grid_to_load_kwh": state.grid_to_load_kw * dt,
             "grid_to_battery_kwh": state.grid_to_battery_kw * dt,

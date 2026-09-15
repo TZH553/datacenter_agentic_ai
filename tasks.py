@@ -17,6 +17,8 @@ exactly once. All control inputs are simple numbers; never construct a host
 dictionary or perform host-by-host calls. The control tool's returned text is
 the authoritative result; do not restate, recalculate, or replace its values.
 A control tool result completes the task.
+Keep projected facility demand below the operating limit reported by
+telemetry; this includes a safety margin below the physical power cap.
 """
 
 COMPUTE_RULES = """
@@ -35,7 +37,8 @@ COOLING_RULES = """
 Keep temperature between 19.2 C and 22.8 C. Choose cooling_factor from 0.8 to
 1.5 and cooling_setpoint_c from 19.2 to 22.8 C. Minimize cooling electricity
 without causing a thermal violation. Higher setpoints improve COP but leave
-less thermal safety margin.
+less thermal safety margin. The setpoint is the actual thermostat target, so
+do not select a value below the temperature needed for safe operation.
 """
 
 ENERGY_RULES = """
@@ -43,7 +46,10 @@ Choose battery power in kW. Positive discharges and negative charges. Stay
 within 10%-95% SOC and plus or minus 60 kW. Use solar surplus for charging. Grid charging is allowed only when price is
 strictly below $0.18/kWh. At normal or high prices, choose zero or discharge;
 never charge from the grid. Consider discharge above $0.35/kWh when SOC is
-sufficient, and preserve battery reserve.
+sufficient, and preserve battery reserve. When price is above $0.35/kWh,
+explicitly request a positive discharge; deterministic control will also
+replace a zero or charging request with safe discharge when energy is
+available.
 """
 
 
@@ -78,7 +84,8 @@ facility_energy_task = Task(
     description=COMMON_LIMITS + COOLING_RULES + ENERGY_RULES + """
 Call Apply facility energy plan once with cooling_factor,
 cooling_setpoint_c, and battery_power_kw. Keep projected facility power below
-the stated capacity and avoid the critical power-risk region.
+the 33.25 kW operating ceiling, which provides a 5% margin below the 35 kW
+physical capacity.
 """,
     expected_output="Accepted joint thermal and electrical plan.",
     agent=facility_energy_agent,

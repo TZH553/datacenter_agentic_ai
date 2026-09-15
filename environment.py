@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def generate_environment(hours=24):
+def generate_environment(hours=24, include_ambient=False):
 
     hour = np.arange(hours)
 
@@ -76,8 +76,7 @@ def generate_environment(hours=24):
     ] = 0.42
 
 
-    return (
-        workload,
-        solar,
-        price
-    )
+    ambient = 27 + 5 * np.sin((hour - 8) / 24 * 2 * np.pi)
+    if include_ambient:
+        return workload, solar, price, ambient
+    return workload, solar, price

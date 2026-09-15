@@ -22,6 +22,7 @@ def estimate_cooling(
     cooling_factor,
     temperature_c=None,
     ambient_temperature_c=None,
+    cooling_setpoint_c=None,
 ):
     """Estimate cooling electricity and heat removal.
 
@@ -36,6 +37,11 @@ def estimate_cooling(
         state.ambient_temperature
         if ambient_temperature_c is None
         else ambient_temperature_c
+    )
+    cooling_setpoint_c = (
+        state.cooling_setpoint_c
+        if cooling_setpoint_c is None
+        else float(cooling_setpoint_c)
     )
 
     server_heat_kw = it_power_kw * state.server_heat_fraction
@@ -56,11 +62,18 @@ def estimate_cooling(
     )
     heat_removed_kw = min(thermal_load_kw, available_capacity_kw)
 
+    # A lower supply-air setpoint and hotter outdoor air both make the
+    # cooling plant work harder.
     ambient_penalty = max(0.0, ambient_temperature_c - 20.0)
+    setpoint_penalty = max(0.0, 22.8 - cooling_setpoint_c)
     effective_cop = max(
         state.cooling_min_cop,
         state.cooling_cop
         - state.cooling_cop_temp_coefficient * ambient_penalty,
+    )
+    effective_cop = max(
+        state.cooling_min_cop,
+        effective_cop - 0.12 * setpoint_penalty,
     )
 
     fan_power_kw = (
@@ -177,6 +190,9 @@ def calculate_grid_power():
     solar surplus-to-battery, then grid-to-battery.
     """
     state.total_power_kw = state.it_power_kw + state.cooling_power_kw
+    state.power_risk_ratio = (
+        state.total_power_kw / state.facility_power_capacity_kw
+    )
     charge_kw = max(0.0, -state.battery_power_kw)
     discharge_kw = max(0.0, state.battery_power_kw)
 

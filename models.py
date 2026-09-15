@@ -57,10 +57,24 @@ def estimate_cooling(
             max(0.0, server_heat_kw + min(0.0, envelope_heat_kw)),
         )
 
+    # Proportional thermostat action makes the chosen setpoint affect the
+    # room temperature instead of merely changing cooling COP. At the
+    # setpoint the plant removes the current heat load; above it, cooling is
+    # increased so the room approaches the target over the configured time
+    # constant. Below it, cooling is reduced and the room is allowed to warm.
+    temperature_correction_kw = (
+        (temperature_c - cooling_setpoint_c)
+        * state.thermal_mass_kwh_per_c
+        / state.thermal_control_time_constant_h
+    )
+    requested_heat_removal_kw = max(
+        0.0, thermal_load_kw + temperature_correction_kw
+    )
+
     available_capacity_kw = (
         state.cooling_nominal_capacity_kw * cooling_factor
     )
-    heat_removed_kw = min(thermal_load_kw, available_capacity_kw)
+    heat_removed_kw = min(requested_heat_removal_kw, available_capacity_kw)
 
     # A lower supply-air setpoint and hotter outdoor air both make the
     # cooling plant work harder.

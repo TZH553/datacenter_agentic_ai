@@ -47,10 +47,9 @@ def generate_environment(
         )
     )
 
-    workload = np.clip(
-        workload,
-        0.20,
-        0.95
+    workload: FloatArray = np.asarray(
+        np.clip(workload, 0.20, 0.95),
+        dtype=np.float64,
     )
 
 
@@ -58,15 +57,12 @@ def generate_environment(
     # Solar
     # ---------------------------------
 
-    solar = np.maximum(
-        0,
-
-        50
-        * np.sin(
-            (hour - 6)
-            / 12
-            * np.pi
-        )
+    solar: FloatArray = np.asarray(
+        np.maximum(
+            0.0,
+            50.0 * np.sin((hour - 6) / 12 * np.pi),
+        ),
+        dtype=np.float64,
     )
 
 
@@ -74,9 +70,10 @@ def generate_environment(
     # Price
     # ---------------------------------
 
-    price = np.full(
+    price: FloatArray = np.full(
         hours,
-        0.20
+        0.20,
+        dtype=np.float64,
     )
 
 
@@ -101,7 +98,10 @@ def generate_environment(
     ] = 0.42
 
 
-    ambient = 27 + 5 * np.sin((hour - 8) / 24 * 2 * np.pi)
+    ambient: FloatArray = np.asarray(
+        27.0 + 5.0 * np.sin((hour - 8) / 24 * 2 * np.pi),
+        dtype=np.float64,
+    )
     if include_ambient:
         return workload, solar, price, ambient
     return workload, solar, price

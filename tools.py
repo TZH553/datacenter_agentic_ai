@@ -117,13 +117,43 @@ def _enforce_power_cap(
     projected_kw = _projected_facility_power(
         allocations, cooling_factor, cooling_setpoint_c
     )
-    if projected_kw > state.facility_power_capacity_kw + 1e-9:
+    if projected_kw > state.facility_operating_limit_kw + 1e-9:
         raise ValueError(
             f"Projected facility power {projected_kw:.2f} kW exceeds "
-            f"the {state.facility_power_capacity_kw:.2f} kW power cap. "
+            f"the {state.facility_operating_limit_kw:.2f} kW operating "
+            f"ceiling (95% of the {state.facility_power_capacity_kw:.2f} "
+            "kW physical cap). "
             "Reduce flexible batch service or cooling demand."
         )
     return projected_kw
+
+
+def _commit_allocations(allocations: Dict[str, float]) -> float:
+    """Apply a complete allocation so no utilisation can remain stale."""
+    assigned_cpu = 0.0
+    for name, utilisation in allocations.items():
+        state.hosts[name]["utilisation"] = utilisation
+        state.hosts[name]["active"] = utilisation > 0.0
+        assigned_cpu += utilisation * state.hosts[name]["cpu_capacity"]
+    return assigned_cpu
+
+
+def _apply_safe_compute_fallback() -> tuple[float, float]:
+    """Apply the largest safe deterministic workload allocation."""
+    for service_fraction in (1.0, 0.75, 0.50, 0.25, 0.0):
+        allocations = _build_allocations(1.0, service_fraction)
+        try:
+            _enforce_power_cap(
+                allocations,
+                state.cooling_factor,
+                state.cooling_setpoint_c,
+            )
+        except ValueError:
+            continue
+        return _commit_allocations(allocations), service_fraction
+    raise ValueError(
+        "Mandatory interactive workload cannot fit below the operating ceiling."
+    )
 
 
 def _normalise_battery(
@@ -171,6 +201,41 @@ def _normalise_battery(
                 solar_surplus_kw,
             )
             value = -allowed_charge_kw
+
+    # A deterministic tariff guard prevents local LLMs from leaving stored
+    # energy unused throughout expensive periods.
+    if (
+        state.grid_price > 0.35
+        and value <= 0.0
+        and state.battery_soc > state.battery_min_soc + 0.05
+    ):
+        if allocations is None:
+            allocations = {
+                name: host["utilisation"]
+                for name, host in state.hosts.items()
+            }
+        if cooling_factor is None:
+            cooling_factor = state.cooling_factor
+        residual_load_kw = max(
+            0.0,
+            _projected_facility_power(allocations, cooling_factor)
+            - state.solar_kw,
+        )
+        usable_energy_kwh = (
+            (state.battery_soc - state.battery_min_soc)
+            * state.battery_capacity_kwh
+        )
+        energy_limited_kw = (
+            usable_energy_kwh
+            * state.battery_discharge_efficiency
+            / state.timestep_h
+        )
+        value = min(
+            50.0,
+            residual_load_kw,
+            state.battery_max_discharge_kw,
+            energy_limited_kw,
+        )
 
     return value
 
@@ -224,6 +289,7 @@ def get_cluster_telemetry() -> str:
             ),
             "battery_command_kw": state.battery_command_kw,
             "facility_power_capacity_kw": state.facility_power_capacity_kw,
+            "facility_operating_limit_kw": state.facility_operating_limit_kw,
             "power_risk_ratio": round(state.power_risk_ratio, 4),
         }
     )
@@ -251,7 +317,15 @@ def schedule_workload_batch(
             state.hosts[name]["utilisation"] = utilisation
             assigned_cpu += utilisation * state.hosts[name]["cpu_capacity"]
     except (TypeError, ValueError) as error:
-        return f"REJECTED: {error}"
+        try:
+            assigned_cpu, service_fraction = _apply_safe_compute_fallback()
+        except ValueError as fallback_error:
+            return f"REJECTED: {error}; fallback failed: {fallback_error}"
+        return (
+            f"FALLBACK_APPLIED: requested plan was unsafe ({error}). "
+            f"Assigned {assigned_cpu:.2f} CPU units with batch service "
+            f"fraction {service_fraction:.2f}. Finish this task now."
+        )
 
     return (
         f"ACCEPTED: assigned {assigned_cpu:.2f} CPU units with target "
@@ -282,13 +356,17 @@ def apply_compute_plan(
         _enforce_power_cap(
             allocations, state.cooling_factor, state.cooling_setpoint_c
         )
-        assigned_cpu = 0.0
-        for name, utilisation in allocations.items():
-            state.hosts[name]["utilisation"] = utilisation
-            state.hosts[name]["active"] = utilisation > 0.0
-            assigned_cpu += utilisation * state.hosts[name]["cpu_capacity"]
+        assigned_cpu = _commit_allocations(allocations)
     except (TypeError, ValueError) as error:
-        return f"REJECTED: {error}"
+        try:
+            assigned_cpu, service_fraction = _apply_safe_compute_fallback()
+        except ValueError as fallback_error:
+            return f"REJECTED: {error}; fallback failed: {fallback_error}"
+        return (
+            f"FALLBACK_APPLIED: requested plan was unsafe ({error}). "
+            f"Assigned {assigned_cpu:.2f} CPU units with batch service "
+            f"fraction {service_fraction:.2f}. Finish this task now."
+        )
 
     active_hosts = [
         name for name, host in state.hosts.items() if host["active"]
@@ -394,13 +472,30 @@ def apply_ems_plan(
             cooling_factor=normalised_cooling,
         )
     except (TypeError, ValueError) as error:
-        return f"REJECTED: {error}"
+        try:
+            assigned_cpu, service_fraction = _apply_safe_compute_fallback()
+            normalised_cooling = state.cooling_factor
+            normalised_setpoint = state.cooling_setpoint_c
+            fallback_allocations = {
+                name: host["utilisation"]
+                for name, host in state.hosts.items()
+            }
+            normalised_battery = _normalise_battery(
+                0.0,
+                allocations=fallback_allocations,
+                cooling_factor=normalised_cooling,
+            )
+        except ValueError as fallback_error:
+            return f"REJECTED: {error}; fallback failed: {fallback_error}"
+        state.battery_command_kw = normalised_battery
+        return (
+            f"FALLBACK_APPLIED: requested plan was unsafe ({error}). "
+            f"Assigned {assigned_cpu:.2f} CPU units with batch service "
+            f"fraction {service_fraction:.2f}, retained safe cooling, and "
+            f"set battery to {normalised_battery:.2f} kW. Finish now."
+        )
 
-    assigned_cpu = 0.0
-    for name, utilisation in allocations.items():
-        state.hosts[name]["utilisation"] = utilisation
-        state.hosts[name]["active"] = utilisation > 0.0
-        assigned_cpu += utilisation * state.hosts[name]["cpu_capacity"]
+    assigned_cpu = _commit_allocations(allocations)
     state.cooling_factor = normalised_cooling
     state.cooling_setpoint_c = normalised_setpoint
     state.battery_command_kw = normalised_battery
@@ -412,7 +507,7 @@ def apply_ems_plan(
     if abs(normalised_battery - requested_battery_kw) > 1e-9:
         adjustment = (
             f" Battery request {requested_battery_kw:.2f} kW was safely "
-            "adjusted to avoid normal/high-price grid charging."
+            "adjusted by the tariff and SOC safety policy."
         )
     return (
         f"ACCEPTED: {assigned_cpu:.2f} CPU units assigned; active hosts "

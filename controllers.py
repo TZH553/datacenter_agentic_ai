@@ -2,13 +2,15 @@ from models import estimate_cooling
 from state import state
 
 
-def _allocate_workload(target_utilisation):
+def _allocate_workload(target_utilisation, batch_service_fraction=1.0):
     """Allocate explicit CPU units across heterogeneous clusters.
 
     Larger clusters are filled first to consolidate demand. The preferred
     utilisation is used first; capacity up to 100% is used only when total
     demand cannot otherwise be served.
     """
+    from workload import select_batch_service
+    select_batch_service(batch_service_fraction)
     target = max(0.01, min(1.0, float(target_utilisation)))
     ordered_hosts = sorted(
         state.hosts,
@@ -87,6 +89,7 @@ class RuleBasedController:
             "host_utilisation": utilisation,
             "host_power": power,
             "cooling_factor": cooling_factor,
+            "cooling_setpoint_c": 22.8 if state.temperature < 22.0 else 21.0,
             "battery_command_kw": battery_command_kw,
         }
 
@@ -225,6 +228,7 @@ class FixedOptimisationController:
                         "host_utilisation": utilisation.copy(),
                         "host_power": power.copy(),
                         "cooling_factor": cooling_factor,
+                        "cooling_setpoint_c": 22.0,
                         "battery_command_kw": command_kw,
                     }
 
@@ -252,5 +256,6 @@ class RLController:
             "host_utilisation": utilisation,
             "host_power": power,
             "cooling_factor": cooling_factor,
+            "cooling_setpoint_c": 22.0,
             "battery_command_kw": battery_command_kw,
         }

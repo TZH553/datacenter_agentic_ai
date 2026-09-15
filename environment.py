@@ -1,7 +1,32 @@
 import numpy as np
+from numpy.typing import NDArray
+from typing import Literal, overload
 
 
-def generate_environment(hours=24, include_ambient=False):
+FloatArray = NDArray[np.float64]
+
+
+@overload
+def generate_environment(
+    hours: int = 24,
+    include_ambient: Literal[False] = False,
+) -> tuple[FloatArray, FloatArray, FloatArray]: ...
+
+
+@overload
+def generate_environment(
+    hours: int,
+    include_ambient: Literal[True],
+) -> tuple[FloatArray, FloatArray, FloatArray, FloatArray]: ...
+
+
+def generate_environment(
+    hours: int = 24,
+    include_ambient: bool = False,
+) -> (
+    tuple[FloatArray, FloatArray, FloatArray]
+    | tuple[FloatArray, FloatArray, FloatArray, FloatArray]
+):
 
     hour = np.arange(hours)
 

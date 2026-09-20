@@ -236,7 +236,23 @@ def calculate_grid_power():
 
 
 def calculate_cost(dt=None):
-    """Calculate grid electricity cost for the current timestep."""
+    """Calculate grid, battery-wear, and total cost for the timestep.
+
+    Battery wear is charged only on delivered discharge energy. Its marginal
+    cost is the amortisable battery CAPEX divided by lifetime delivered kWh.
+    Charging electricity is already captured in grid cost when applicable.
+    """
     dt = state.timestep_h if dt is None else float(dt)
-    state.cost = state.grid_power_kw * state.grid_price * dt
+    state.grid_energy_cost = state.grid_power_kw * state.grid_price * dt
+    discharged_kwh = max(0.0, state.battery_power_kw) * dt
+    state.battery_degradation_cost = (
+        discharged_kwh * state.battery_degradation_cost_per_kwh
+    )
+    if state.battery_usable_cycle_kwh > 0:
+        state.battery_equivalent_full_cycles += (
+            discharged_kwh / state.battery_usable_cycle_kwh
+        )
+    state.cost = (
+        state.grid_energy_cost + state.battery_degradation_cost
+    )
     return state.cost

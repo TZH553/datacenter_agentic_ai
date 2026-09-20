@@ -259,6 +259,17 @@ def run_simulation(
         result = {
             "hour": hour,
             "timestep_h": dt,
+            "hardware_profile": state.hardware_profile_name,
+            "processor_model": state.processor_model,
+            "accelerator_model": state.accelerator_model,
+            "processing_unit_name": state.processing_unit_name,
+            "servers_per_cluster": state.servers_per_cluster,
+            "total_server_count": state.total_server_count,
+            "processing_capacity_per_server": (
+                state.processing_capacity_per_server
+            ),
+            "server_idle_power_kw": state.server_idle_power_kw,
+            "server_max_power_kw": state.server_max_power_kw,
             "workload": state.pending_workload_fraction,
             "workload_cpu_units": state.pending_workload_cpu,
             "total_cpu_capacity": state.total_cpu_capacity,

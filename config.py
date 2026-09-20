@@ -14,11 +14,24 @@ class Config:
     hours: int = 168
     timestep_h: float = 1.0
 
-    # Used to generate identical clusters when clusters is None.
+    # Default homogeneous hardware profile. These values describe the full
+    # server, including its processor, memory, fans, storage and any installed
+    # accelerator. Change them here before running an experiment.
     n_clusters: int = 10
-    p_idle_kw: float = 1.0
-    p_max_kw: float = 3.0
-    cpu_capacity: float = 100.0
+    hardware_profile_name: str = "Generic CPU compute server"
+    processor_model: str = "Assumed 20-core server processor"
+    accelerator_model: str = "None"
+    servers_per_cluster: int = 5
+    processing_unit_name: str = "CPU-core equivalent"
+    processing_capacity_per_server: float = 20.0
+    server_idle_power_kw: float = 0.20
+    server_max_power_kw: float = 0.60
+
+    # Optional cluster-level overrides retained for sensitivity studies and
+    # backwards compatibility. None derives each value from the server profile.
+    p_idle_kw: Optional[float] = None
+    p_max_kw: Optional[float] = None
+    cpu_capacity: Optional[float] = None
 
     # Provide explicit specifications to model heterogeneous clusters.
     clusters: Optional[Tuple[ClusterConfig, ...]] = None

@@ -255,4 +255,15 @@ def calculate_cost(dt=None):
     state.cost = (
         state.grid_energy_cost + state.battery_degradation_cost
     )
+    # Counterfactual: meet the same non-charging facility load with solar and
+    # grid, but without battery charging or discharging.
+    grid_power_without_battery_kw = (
+        state.grid_to_load_kw + max(0.0, state.battery_power_kw)
+    )
+    state.counterfactual_grid_cost_without_battery = (
+        grid_power_without_battery_kw * state.grid_price * dt
+    )
+    state.battery_net_saving_vs_grid = (
+        state.counterfactual_grid_cost_without_battery - state.cost
+    )
     return state.cost

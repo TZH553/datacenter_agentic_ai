@@ -175,6 +175,14 @@ def _normalise_battery(
     if value < 0 and state.battery_soc >= state.battery_max_soc:
         raise ValueError("Battery SOC is too high for charging.")
 
+    # Do not consume cycle life when grid electricity is cheaper than the
+    # amortized wear cost of delivering one kWh from the battery.
+    if (
+        value > 0
+        and state.grid_price <= state.battery_degradation_cost_per_kwh
+    ):
+        value = 0.0
+
     if value < 0:
         if allocations is None:
             allocations = {
@@ -206,6 +214,7 @@ def _normalise_battery(
     # energy unused throughout expensive periods.
     if (
         state.grid_price > 0.35
+        and state.grid_price > state.battery_degradation_cost_per_kwh
         and value <= 0.0
         and state.battery_soc > state.battery_min_soc + 0.05
     ):
@@ -288,6 +297,16 @@ def get_cluster_telemetry() -> str:
                 state.battery_soc * 100, 2
             ),
             "battery_command_kw": state.battery_command_kw,
+            "battery_capex_USD": round(state.battery_upfront_cost, 2),
+            "battery_cycle_life": state.battery_cycle_life,
+            "battery_degradation_cost_per_kwh": round(
+                state.battery_degradation_cost_per_kwh, 5
+            ),
+            "battery_saving_vs_grid_per_kwh": round(
+                state.grid_price
+                - state.battery_degradation_cost_per_kwh,
+                5,
+            ),
             "facility_power_capacity_kw": state.facility_power_capacity_kw,
             "facility_operating_limit_kw": state.facility_operating_limit_kw,
             "power_risk_ratio": round(state.power_risk_ratio, 4),

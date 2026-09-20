@@ -54,6 +54,11 @@ class Config:
     battery_max_discharge_kw: float = 60.0
     battery_charge_eff: float = 0.95
     battery_discharge_eff: float = 0.95
+    # Lifecycle-cost assumptions. A full cycle uses the configured SOC window.
+    # Set battery_cycle_life to 50_000 for the professor's alternative case.
+    battery_capex_per_kwh: float = 400.0
+    battery_cycle_life: int = 10_000
+    battery_residual_value_fraction: float = 0.0
 
     max_workload_shed: float = 0.20
     sla_limit: float = 0.05

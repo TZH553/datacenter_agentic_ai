@@ -30,6 +30,21 @@ BATTERY_CYCLE_LIFE = int(os.getenv("BATTERY_CYCLE_LIFE", "10000"))
 def calculate_summary(name, df, is_agentic):
     return {
         "System": name,
+        "Hardware Profile": df["hardware_profile"].iloc[0],
+        "Processor Model": df["processor_model"].iloc[0],
+        "Accelerator Model": df["accelerator_model"].iloc[0],
+        "Processing Unit": df["processing_unit_name"].iloc[0],
+        "Servers per Cluster": df["servers_per_cluster"].iloc[0],
+        "Total Server Count": df["total_server_count"].iloc[0],
+        "Capacity per Server": df[
+            "processing_capacity_per_server"
+        ].iloc[0],
+        "Server Idle Power (kW)": df[
+            "server_idle_power_kw"
+        ].iloc[0],
+        "Server Maximum Power (kW)": df[
+            "server_max_power_kw"
+        ].iloc[0],
         "Total Energy (kWh)": df["total_energy_kwh"].sum(),
         "IT Energy (kWh)": df["IT_energy_kwh"].sum(),
         "Cooling Energy (kWh)": df["cooling_energy_kwh"].sum(),

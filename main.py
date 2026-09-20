@@ -121,8 +121,11 @@ def main():
         df["grid_power_kw"].max()
     )
 
+    total_it_energy = df["IT_energy_kwh"].sum()
     average_pue = (
-        df["pue"].mean()
+        df["total_energy_kwh"].sum() / total_it_energy
+        if total_it_energy > 1e-9
+        else float("nan")
     )
 
     temperature_violations = (

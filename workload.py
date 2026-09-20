@@ -26,6 +26,44 @@ def add_workload(workload_fraction):
     return state.pending_workload_cpu
 
 
+def add_trace_workload(hour_arrivals):
+    """Add one hourly bin of explicit trace jobs to the scheduler state."""
+    interactive_cpu = max(
+        0.0, float(hour_arrivals.get("interactive_cpu", 0.0))
+    )
+    batch_jobs = hour_arrivals.get("batch_jobs", [])
+
+    state.interactive_workload_cpu = interactive_cpu
+    state.batch_arrival_cpu = 0.0
+    for source_job in batch_jobs:
+        cpu_work = max(0.0, float(source_job["cpu"]))
+        if cpu_work <= 1e-9:
+            continue
+        hours_left = int(source_job["hours_left"])
+        if hours_left <= 0:
+            raise ValueError("Trace job deadline must be positive.")
+        job = dict(source_job)
+        job["cpu"] = cpu_work
+        job["hours_left"] = hours_left
+        state.batch_backlog.append(job)
+        state.batch_arrival_cpu += cpu_work
+
+    arrival_cpu = (
+        state.interactive_workload_cpu + state.batch_arrival_cpu
+    )
+    state.pending_workload_fraction = min(
+        1.0, arrival_cpu / max(state.total_cpu_capacity, 1e-9)
+    )
+    state.batch_backlog_cpu = sum(
+        job["cpu"] for job in state.batch_backlog
+    )
+    state.batch_served_cpu = state.batch_backlog_cpu
+    state.pending_workload_cpu = (
+        state.interactive_workload_cpu + state.batch_served_cpu
+    )
+    return state.pending_workload_cpu
+
+
 def select_batch_service(service_fraction):
     """Select flexible batch demand; jobs due now are always forced to run."""
     fraction = max(0.0, min(1.0, float(service_fraction)))

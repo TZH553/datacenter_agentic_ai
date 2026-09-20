@@ -1,6 +1,9 @@
 import pandas as pd
+from pathlib import Path
 
 from environment import generate_environment
+from config import Config
+from trace_workload import load_cloud_workload_trace
 
 from controllers import (
     RuleBasedController
@@ -27,10 +30,17 @@ def main():
     # GENERATE IDENTICAL ENVIRONMENT
     # ==========================================
 
-    workload, solar, price = (
+    config = Config()
+    _, solar, price, ambient = (
         generate_environment(
-            HOURS
+            HOURS,
+            include_ambient=True,
         )
+    )
+    workload, trace_arrivals = load_cloud_workload_trace(
+        Path(__file__).resolve().parent / config.trace_workload_filename,
+        HOURS,
+        config,
     )
 
 
@@ -62,9 +72,15 @@ def main():
 
         price_profile=price,
 
+        ambient_profile=ambient,
+
         hours=HOURS,
 
-        is_agentic=False
+        is_agentic=False,
+
+        config=config,
+
+        trace_arrivals=trace_arrivals
     )
 
 

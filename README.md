@@ -44,6 +44,54 @@ monitoring, prediction, planning, optimisation and control modules. It is
 not pretending that an LLM should calculate the physical equations itself.
 An LLM can be connected later as the planning/orchestration layer.
 
+## Configurable server hardware assumptions
+
+The default homogeneous cluster is derived from explicit per-server variables
+near the start of `config.py`:
+
+```python
+n_clusters = 10
+hardware_profile_name = "Generic CPU compute server"
+processor_model = "Assumed 20-core server processor"
+accelerator_model = "None"
+servers_per_cluster = 5
+processing_unit_name = "CPU-core equivalent"
+processing_capacity_per_server = 20.0
+server_idle_power_kw = 0.20
+server_max_power_kw = 0.60
+```
+
+Therefore, each default cluster contains five servers, provides 100 processing
+units, consumes 1 kW while active and idle, and consumes 3 kW at full
+utilisation. Across ten clusters, the model represents 50 servers and 1,000
+processing units. These defaults preserve the earlier cluster-level values
+while making their hardware basis explicit.
+
+The power values must represent complete wall-power for a server, including
+processor, memory, storage, fans, installed accelerators and power-supply
+losses. Change the model labels, capacity and measured power values together
+when selecting real hardware. The optional `p_idle_kw`, `p_max_kw`, and
+`cpu_capacity` fields override the derived cluster values when required.
+
+## Cloud workload trace time resolution
+
+The supplied cloud workload CSV is an event/job trace and therefore has no
+single native fixed timestep. Submission timestamps have one-minute
+resolution, start and end timestamps have one-second resolution, and execution
+times contain fractional seconds. The trace covers 1 January to 10 March 2024.
+
+The simulator currently uses:
+
+```python
+timestep_h = 1.0
+```
+
+Consequently, jobs from the event trace should be allocated across one-hour
+bins before use by the current simulator. The one-hour value is a modelling
+choice, not the original CSV's sampling interval. A smaller timestep such as
+15 minutes can be selected, but the workload aggregation, solar, price and
+ambient profiles must all use the same interval.
+
 ## Heterogeneous cluster example
 
 Input workload profiles remain normalized fractions from 0 to 1. The simulator

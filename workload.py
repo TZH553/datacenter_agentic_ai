@@ -78,9 +78,15 @@ def select_batch_service(service_fraction):
 
 
 def advance_batch_queue():
-    """Remove served work FIFO, age the remainder, and count deadline misses."""
+    """Serve earliest-deadline jobs, then age and expire the remainder."""
     remaining_service = state.batch_served_cpu
-    for job in state.batch_backlog:
+    service_order = sorted(
+        state.batch_backlog,
+        key=lambda job: job["hours_left"],
+    )
+    for job in service_order:
+        if remaining_service <= 1e-9:
+            break
         served = min(job["cpu"], remaining_service)
         job["cpu"] -= served
         remaining_service -= served

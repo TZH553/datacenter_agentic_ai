@@ -3,6 +3,7 @@ import os
 
 import pandas as pd
 
+from config import Config
 from controllers import (
     FixedOptimisationController,
     RLController,
@@ -15,8 +16,15 @@ from simulation import run_simulation
 # Keep defaults small for an architecture smoke test. Override for final runs:
 # Windows CMD: set EXPERIMENT_HOURS=24
 # PowerShell:  $env:EXPERIMENT_HOURS=24
+# PowerShell lifecycle sensitivity:
+# $env:BATTERY_CYCLE_LIFE=10000  # or 50000
+# $env:BATTERY_CAPEX_PER_KWH=400
 HOURS = int(os.getenv("EXPERIMENT_HOURS", "24"))
 AGENT_TIMEOUT_SECONDS = int(os.getenv("AGENT_TIMEOUT_SECONDS", "120"))
+BATTERY_CAPEX_PER_KWH = float(
+    os.getenv("BATTERY_CAPEX_PER_KWH", "400")
+)
+BATTERY_CYCLE_LIFE = int(os.getenv("BATTERY_CYCLE_LIFE", "10000"))
 
 
 def calculate_summary(name, df, is_agentic):
@@ -34,6 +42,18 @@ def calculate_summary(name, df, is_agentic):
         "Grid to Battery (kWh)": df["grid_to_battery_kwh"].sum(),
         "Battery Discharge (kWh)": df["battery_discharge_kwh"].sum(),
         "Battery Charge (kWh)": df["battery_charge_kwh"].sum(),
+        "Battery CAPEX ($/kWh)": df["battery_capex_per_kwh"].iloc[0],
+        "Battery Cycle Life": df["battery_cycle_life"].iloc[0],
+        "Battery Wear Cost ($/kWh discharged)": df[
+            "battery_degradation_cost_per_kwh"
+        ].iloc[0],
+        "Grid Electricity Cost": df["grid_energy_cost"].sum(),
+        "Battery Degradation Cost": df[
+            "battery_degradation_cost"
+        ].sum(),
+        "Equivalent Full Cycles": df[
+            "battery_equivalent_full_cycles"
+        ].iloc[-1],
         "Unmet Workload (fraction-hours)": (
             df["unmet_workload"] * df["timestep_h"]
         ).sum(),
@@ -84,6 +104,10 @@ def calculate_summary(name, df, is_agentic):
 
 
 def main():
+    config = Config(
+        battery_capex_per_kwh=BATTERY_CAPEX_PER_KWH,
+        battery_cycle_life=BATTERY_CYCLE_LIFE,
+    )
     workload, solar, price, ambient = generate_environment(
         HOURS, include_ambient=True
     )
@@ -152,6 +176,7 @@ def main():
             is_agentic=system["is_agentic"],
             agentic_architecture=system["architecture"],
             agent_timeout_seconds=AGENT_TIMEOUT_SECONDS,
+            config=config,
         )
         df = pd.DataFrame(results)
         df.to_csv(system["output"], index=False)

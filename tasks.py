@@ -45,11 +45,13 @@ ENERGY_RULES = """
 Choose battery power in kW. Positive discharges and negative charges. Stay
 within 10%-95% SOC and plus or minus 60 kW. Use solar surplus for charging. Grid charging is allowed only when price is
 strictly below $0.18/kWh. At normal or high prices, choose zero or discharge;
-never charge from the grid. Consider discharge above $0.35/kWh when SOC is
-sufficient, and preserve battery reserve. When price is above $0.35/kWh,
-explicitly request a positive discharge; deterministic control will also
-replace a zero or charging request with safe discharge when energy is
-available.
+never charge from the grid. Telemetry reports the amortized battery wear cost
+per discharged kWh. Discharge only when grid price is higher than this
+marginal wear cost. Consider discharge above $0.35/kWh when SOC is sufficient,
+and preserve battery reserve. When price is above $0.35/kWh and battery energy
+is cheaper than grid energy, explicitly request a positive discharge;
+deterministic control will also replace a zero or charging request with safe
+discharge when energy is available.
 """
 
 

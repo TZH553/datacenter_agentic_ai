@@ -103,7 +103,11 @@ integrated_ems_agent = Agent(
         "You make one globally coordinated decision across compute, "
         "thermal, and electrical systems."
     ),
-    tools=[get_cluster_telemetry, apply_ems_plan],
+    tools=[
+        get_cluster_telemetry,
+        apply_ems_plan,
+        apply_facility_energy_plan,
+    ],
     verbose=True,
     max_iter=3,
     llm=integrated_llm,

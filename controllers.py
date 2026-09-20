@@ -78,7 +78,11 @@ class RuleBasedController:
         else:
             cooling_factor = 1.00
 
-        if state.grid_price > 0.35 and state.battery_soc > 0.30:
+        if (
+            state.grid_price > 0.35
+            and state.grid_price > state.battery_degradation_cost_per_kwh
+            and state.battery_soc > 0.30
+        ):
             battery_command_kw = 15.0
         elif state.grid_price < 0.18 and state.battery_soc < 0.85:
             battery_command_kw = -10.0
@@ -100,7 +104,6 @@ class FixedOptimisationController:
     def __init__(self):
         self.cooling_options = [0.8, 1.0, 1.2, 1.4]
         self.battery_options = [-20.0, -10.0, 0.0, 10.0, 20.0, 30.0]
-        self.battery_degradation_cost_per_kwh = 0.04
         self.low_soc_threshold = 0.30
         self.low_soc_penalty_weight = 5.0
         self.temperature_penalty_weight = 100.0
@@ -204,9 +207,9 @@ class FixedOptimisationController:
                 )
                 grid_cost = grid_power_kw * state.grid_price * dt
                 degradation_cost = (
-                    abs(battery_power_kw)
+                    max(0.0, battery_power_kw)
                     * dt
-                    * self.battery_degradation_cost_per_kwh
+                    * state.battery_degradation_cost_per_kwh
                 )
                 low_soc_penalty = max(
                     0.0, self.low_soc_threshold - predicted_soc
@@ -245,7 +248,11 @@ class RLController:
         utilisation, power = _allocate_workload(target)
 
         battery_command_kw = 0.0
-        if state.grid_price > 0.35 and state.battery_soc > 0.35:
+        if (
+            state.grid_price > 0.35
+            and state.grid_price > state.battery_degradation_cost_per_kwh
+            and state.battery_soc > 0.35
+        ):
             battery_command_kw = 50.0
         elif state.solar_kw > 30 and state.battery_soc < 0.80:
             battery_command_kw = -30.0

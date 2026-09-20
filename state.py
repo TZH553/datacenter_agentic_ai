@@ -136,6 +136,8 @@ class DataCenterState:
         self.solar_curtailed_kw = 0.0
         self.grid_energy_cost = 0.0
         self.battery_degradation_cost = 0.0
+        self.counterfactual_grid_cost_without_battery = 0.0
+        self.battery_net_saving_vs_grid = 0.0
         self.cost = 0.0
         self.facility_power_capacity_kw = cfg.facility_power_capacity_kw
         self.facility_operating_limit_kw = (

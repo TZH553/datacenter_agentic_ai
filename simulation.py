@@ -18,7 +18,12 @@ from state import reset_state, state
 from workload import add_trace_workload, add_workload, advance_batch_queue
 
 
-def _crew_worker(initial_state, result_queue, architecture):
+def _crew_worker(
+    initial_state,
+    result_queue,
+    architecture,
+    skip_compute,
+):
     """Execute CrewAI in an isolated process and return its updated state."""
     try:
         state.__dict__.clear()
@@ -26,7 +31,10 @@ def _crew_worker(initial_state, result_queue, architecture):
 
         from crew import get_data_center_crew
 
-        data_center_crew = get_data_center_crew(architecture)
+        data_center_crew = get_data_center_crew(
+            architecture,
+            skip_compute=skip_compute,
+        )
         crew_result = data_center_crew.kickoff()
         raw_usage = getattr(crew_result, "token_usage", None)
         token_usage = {}
@@ -56,7 +64,11 @@ def _crew_worker(initial_state, result_queue, architecture):
         )
 
 
-def run_crew_with_timeout(architecture, timeout_seconds=120):
+def run_crew_with_timeout(
+    architecture,
+    timeout_seconds=120,
+    skip_compute=False,
+):
     """Run CrewAI in a child process that can be stopped on timeout."""
     context = mp.get_context("spawn")
     result_queue = context.Queue()
@@ -66,6 +78,7 @@ def run_crew_with_timeout(architecture, timeout_seconds=120):
             copy.deepcopy(state.__dict__),
             result_queue,
             architecture,
+            skip_compute,
         ),
     )
     process.start()
@@ -159,9 +172,28 @@ def run_simulation(
         response_time = 0.0
         timed_out = False
         fallback_used = False
+        scheduling_ai_skipped = False
         token_usage = {}
 
         if is_agentic:
+            if trace_arrivals is not None:
+                incoming_cpu = float(
+                    trace_arrivals[hour].get("arrival_cpu", 0.0)
+                )
+                scheduling_ai_skipped = (
+                    incoming_cpu <= 1e-9
+                    and state.batch_backlog_cpu <= 1e-9
+                )
+            if scheduling_ai_skipped:
+                for host in state.hosts.values():
+                    host["utilisation"] = 0.0
+                    host["active"] = False
+                state.batch_served_cpu = 0.0
+                state.pending_workload_cpu = 0.0
+                print(
+                    f"\n[AGENTIC] Hour {hour} has no incoming or queued "
+                    "work; skipping AI scheduling."
+                )
             print(f"\n[AGENTIC] Running CrewAI for hour {hour}...")
             start_time = time.perf_counter()
             (
@@ -172,6 +204,7 @@ def run_simulation(
             ) = run_crew_with_timeout(
                 architecture=agentic_architecture,
                 timeout_seconds=agent_timeout_seconds,
+                skip_compute=scheduling_ai_skipped,
             )
             response_time = time.perf_counter() - start_time
 
@@ -299,6 +332,7 @@ def run_simulation(
             "agent_response_time_s": response_time,
             "agent_timed_out": int(timed_out),
             "fallback_used": int(fallback_used),
+            "scheduling_ai_skipped": int(scheduling_ai_skipped),
             "agentic_architecture": (
                 agentic_architecture if is_agentic else "not_applicable"
             ),

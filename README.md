@@ -86,11 +86,39 @@ The simulator currently uses:
 timestep_h = 1.0
 ```
 
-Consequently, jobs from the event trace should be allocated across one-hour
-bins before use by the current simulator. The one-hour value is a modelling
-choice, not the original CSV's sampling interval. A smaller timestep such as
-15 minutes can be selected, but the workload aggregation, solar, price and
-ambient profiles must all use the same interval.
+Consequently, jobs from the event trace are allocated across one-hour bins.
+The one-hour value is a modelling choice, not the original CSV's sampling
+interval. The current trace loader deliberately requires
+`timestep_h = 1.0`. Supporting 15-minute operation would require changing
+the trace aggregation and all solar, price and ambient profiles together.
+
+The code now loads `cloud_workload_dataset.csv` from the same directory as
+`experiment_rq1.py` and `main.py`. Each job enters the system in the
+one-hour bin containing its `Submit_Time`. Its processing work is:
+
+```text
+CPU-core-hours = Used_CPUs × Execution_Time(Seconds) / 3600
+```
+
+Interactive jobs are mandatory in their arrival hour. Other jobs enter the
+flexible queue with the following assumed deadlines:
+
+| Job type | High priority | Medium priority | Low priority |
+| --- | ---: | ---: | ---: |
+| batch or unrecognised | 1 h | 4 h | 8 h |
+| GPU | 2 h | 6 h | 12 h |
+| MPI | 1 h | 3 h | 6 h |
+
+These values are configurable in `config.py` through
+`trace_batch_deadlines_h`, `trace_gpu_deadlines_h`, and
+`trace_mpi_deadlines_h`. The tuple order is high, medium, low. Because the
+source CSV contains no explicit deadline, these are documented simulation
+assumptions.
+
+By default the experiment starts at the earliest submission timestamp.
+Set `trace_window_start` to an ISO timestamp to select another period.
+`trace_scale_factor` can scale all CPU-core-hour values for capacity
+sensitivity tests; its default is 1.0, which preserves the source data.
 
 ## Heterogeneous cluster example
 

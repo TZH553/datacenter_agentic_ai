@@ -1,5 +1,6 @@
 import multiprocessing as mp
 import os
+from pathlib import Path
 
 import pandas as pd
 
@@ -11,6 +12,7 @@ from controllers import (
 )
 from environment import generate_environment
 from simulation import run_simulation
+from trace_workload import load_cloud_workload_trace
 
 
 # Keep defaults small for an architecture smoke test. Override for final runs:
@@ -30,6 +32,8 @@ BATTERY_CYCLE_LIFE = int(os.getenv("BATTERY_CYCLE_LIFE", "10000"))
 def calculate_summary(name, df, is_agentic):
     return {
         "System": name,
+        "Workload Source": df["workload_source"].iloc[0],
+        "Trace Window Start": df["trace_bin_start"].iloc[0],
         "Hardware Profile": df["hardware_profile"].iloc[0],
         "Processor Model": df["processor_model"].iloc[0],
         "Accelerator Model": df["accelerator_model"].iloc[0],
@@ -130,8 +134,17 @@ def main():
         battery_capex_per_kwh=BATTERY_CAPEX_PER_KWH,
         battery_cycle_life=BATTERY_CYCLE_LIFE,
     )
-    workload, solar, price, ambient = generate_environment(
+    _, solar, price, ambient = generate_environment(
         HOURS, include_ambient=True
+    )
+    trace_path = (
+        Path(__file__).resolve().parent
+        / config.trace_workload_filename
+    )
+    workload, trace_arrivals = load_cloud_workload_trace(
+        trace_path,
+        HOURS,
+        config,
     )
 
     systems = [
@@ -199,6 +212,7 @@ def main():
             agentic_architecture=system["architecture"],
             agent_timeout_seconds=AGENT_TIMEOUT_SECONDS,
             config=config,
+            trace_arrivals=trace_arrivals,
         )
         df = pd.DataFrame(results)
         df.to_csv(system["output"], index=False)

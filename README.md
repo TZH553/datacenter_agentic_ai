@@ -131,3 +131,41 @@ The simulator now includes:
 `single_agent` configurations alongside the non-agentic baselines. It writes
 two-agent hourly output to `rq3_agentic_two_hourly.csv` and includes deadline,
 power-risk, power-cap, ambient-temperature, cooling-setpoint, and COP metrics.
+
+## Battery lifecycle cost
+
+Battery discharge is not treated as free energy. The simulation amortizes the
+upfront battery cost over its expected full-cycle life:
+
+```text
+usable delivered energy per cycle
+    = capacity × (maximum SOC - minimum SOC) × discharge efficiency
+
+battery wear cost per discharged kWh
+    = upfront battery cost × (1 - residual value fraction)
+      / (cycle life × usable delivered energy per cycle)
+
+total operating cost
+    = grid electricity cost + battery degradation cost
+```
+
+With the default 300 kWh battery, $400/kWh CAPEX, 10%-95% SOC window, 95%
+discharge efficiency, and zero residual value, the wear cost is approximately
+$0.04954 per discharged kWh for 10,000 cycles and $0.00991/kWh for 50,000
+cycles. Grid electricity used to charge the battery is already included in
+grid cost, so it is not added again at discharge.
+
+Run the two cycle-life sensitivity cases in PowerShell:
+
+```powershell
+$env:BATTERY_CAPEX_PER_KWH=400
+$env:BATTERY_CYCLE_LIFE=10000
+python experiment_rq1.py
+
+$env:BATTERY_CYCLE_LIFE=50000
+python experiment_rq1.py
+```
+
+The hourly files report grid cost, battery wear cost, marginal battery wear
+cost, and cumulative equivalent full cycles. The summary reports grid cost,
+battery degradation cost, and their combined total separately.

@@ -329,6 +329,12 @@ def run_simulation(
             "temperature_violation": temperature_violation,
             "electricity_price": state.grid_price,
             "grid_energy_cost": state.grid_energy_cost,
+            "counterfactual_grid_cost_without_battery": (
+                state.counterfactual_grid_cost_without_battery
+            ),
+            "battery_net_saving_vs_grid": (
+                state.battery_net_saving_vs_grid
+            ),
             "cost": state.cost,
             "pue": pue,
         }

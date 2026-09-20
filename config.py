@@ -61,6 +61,15 @@ class Config:
     interactive_workload_fraction: float = 0.70
     batch_deadline_h: int = 4
 
+    # Cloud workload trace settings. Priority tuple order is
+    # (high, medium, low). Interactive jobs are mandatory in their arrival bin.
+    trace_workload_filename: str = "cloud_workload_dataset.csv"
+    trace_scale_factor: float = 1.0
+    trace_window_start: Optional[str] = None
+    trace_batch_deadlines_h: Tuple[int, int, int] = (1, 4, 8)
+    trace_gpu_deadlines_h: Tuple[int, int, int] = (2, 6, 12)
+    trace_mpi_deadlines_h: Tuple[int, int, int] = (1, 3, 6)
+
     battery_capacity_kwh: float = 300.0
     initial_soc: float = 0.70
     battery_max_charge_kw: float = 60.0

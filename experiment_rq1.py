@@ -86,7 +86,13 @@ def calculate_summary(name, df, is_agentic):
         "Total Cost": df["cost"].sum(),
         "Peak Total Power (kW)": df["total_power_kw"].max(),
         "Peak Grid Power (kW)": df["grid_power_kw"].max(),
-        "Average PUE": df["pue"].mean(),
+        # Energy-weighted PUE over the complete experiment horizon.
+        "Average PUE": (
+            df["total_energy_kwh"].sum()
+            / df["IT_energy_kwh"].sum()
+            if df["IT_energy_kwh"].sum() > 1e-9
+            else float("nan")
+        ),
         "Average Temperature (C)": df["temperature_C"].mean(),
         "Max Temperature (C)": df["temperature_C"].max(),
         "Temperature Violations": df["temperature_violation"].sum(),

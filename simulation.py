@@ -275,7 +275,13 @@ def run_simulation(
             unmet_workload_cpu / state.total_cpu_capacity
         )
 
-        pue = state.total_power_kw / max(state.it_power_kw, 1e-9)
+        # PUE is undefined when no IT load is running. Store NaN instead of
+        # dividing by an epsilon, which produced extremely large fake values.
+        pue = (
+            state.total_power_kw / state.it_power_kw
+            if state.it_power_kw > 1e-9
+            else float("nan")
+        )
         temperature_violation = int(
             state.temperature < state.min_temp_c
             or state.temperature > state.max_temp_c

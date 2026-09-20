@@ -120,6 +120,14 @@ Set `trace_window_start` to an ISO timestamp to select another period.
 `trace_scale_factor` can scale all CPU-core-hour values for capacity
 sensitivity tests; its default is 1.0, which preserves the source data.
 
+For an agentic run, the simulator skips the AI compute/scheduling task when an
+hour contains no newly submitted jobs and the batch queue is also empty.
+Hosts are shut down deterministically, while the relevant cooling and battery
+agent tasks still run. Scheduling is not skipped when deferred work remains in
+the queue, even if the current trace bin has no new submissions. Hourly output
+records this decision in `scheduling_ai_skipped`, and the summary reports
+`Scheduling AI Skips`.
+
 ## Heterogeneous cluster example
 
 Input workload profiles remain normalized fractions from 0 to 1. The simulator

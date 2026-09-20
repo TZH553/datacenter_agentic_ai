@@ -147,6 +147,9 @@ battery wear cost per discharged kWh
 
 total operating cost
     = grid electricity cost + battery degradation cost
+
+battery net saving versus grid
+    = counterfactual grid cost without storage - total operating cost
 ```
 
 With the default 300 kWh battery, $400/kWh CAPEX, 10%-95% SOC window, 95%
@@ -168,4 +171,7 @@ python experiment_rq1.py
 
 The hourly files report grid cost, battery wear cost, marginal battery wear
 cost, and cumulative equivalent full cycles. The summary reports grid cost,
-battery degradation cost, and their combined total separately.
+battery degradation cost, their combined total, the counterfactual cost of
+buying the same load from the grid without storage, and the resulting net
+battery saving. A positive net saving means storage was cheaper; a negative
+value means buying from the grid would have been cheaper.

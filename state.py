@@ -19,16 +19,69 @@ class DataCenterState:
             cfg.envelope_heat_transfer_kw_per_c
         )
 
+        self.hardware_profile_name = cfg.hardware_profile_name
+        self.processor_model = cfg.processor_model
+        self.accelerator_model = cfg.accelerator_model
+        self.processing_unit_name = cfg.processing_unit_name
+        self.servers_per_cluster = cfg.servers_per_cluster
+        self.processing_capacity_per_server = (
+            cfg.processing_capacity_per_server
+        )
+        self.server_idle_power_kw = cfg.server_idle_power_kw
+        self.server_max_power_kw = cfg.server_max_power_kw
+
+        if cfg.n_clusters <= 0:
+            raise ValueError("Number of clusters must be positive.")
+        if cfg.servers_per_cluster <= 0:
+            raise ValueError("Servers per cluster must be positive.")
+        if cfg.processing_capacity_per_server <= 0:
+            raise ValueError(
+                "Processing capacity per server must be positive."
+            )
+        if not 0 <= cfg.server_idle_power_kw <= cfg.server_max_power_kw:
+            raise ValueError(
+                "Server power must satisfy 0 <= idle <= maximum power."
+            )
+
         cluster_specs = cfg.clusters
+        uses_default_hardware_profile = cluster_specs is None
         if cluster_specs is None:
+            derived_cpu_capacity = (
+                cfg.servers_per_cluster
+                * cfg.processing_capacity_per_server
+            )
+            derived_idle_kw = (
+                cfg.servers_per_cluster * cfg.server_idle_power_kw
+            )
+            derived_max_kw = (
+                cfg.servers_per_cluster * cfg.server_max_power_kw
+            )
             cluster_specs = tuple(
                 ClusterConfig(
-                    cpu_capacity=cfg.cpu_capacity,
-                    p_idle_kw=cfg.p_idle_kw,
-                    p_max_kw=cfg.p_max_kw,
+                    cpu_capacity=(
+                        derived_cpu_capacity
+                        if cfg.cpu_capacity is None
+                        else cfg.cpu_capacity
+                    ),
+                    p_idle_kw=(
+                        derived_idle_kw
+                        if cfg.p_idle_kw is None
+                        else cfg.p_idle_kw
+                    ),
+                    p_max_kw=(
+                        derived_max_kw
+                        if cfg.p_max_kw is None
+                        else cfg.p_max_kw
+                    ),
                 )
                 for _ in range(cfg.n_clusters)
             )
+
+        self.total_server_count = (
+            cfg.n_clusters * cfg.servers_per_cluster
+            if uses_default_hardware_profile
+            else None
+        )
 
         if not cluster_specs:
             raise ValueError("At least one cluster must be configured.")
@@ -47,6 +100,11 @@ class DataCenterState:
                 "cpu_capacity": float(cluster.cpu_capacity),
                 "p_idle": float(cluster.p_idle_kw),
                 "p_max": float(cluster.p_max_kw),
+                "server_count": (
+                    cfg.servers_per_cluster
+                    if uses_default_hardware_profile
+                    else None
+                ),
             }
 
         # Input profiles are fractions, while scheduling uses explicit CPU units.

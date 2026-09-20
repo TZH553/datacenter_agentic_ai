@@ -134,3 +134,14 @@ batch_service_fraction, and cooling_setpoint_c.
     expected_output="Accepted complete EMS plan.",
     agent=integrated_ems_agent,
 )
+
+idle_facility_task = Task(
+    description=COMMON_LIMITS + COOLING_RULES + ENERGY_RULES + """
+There is no incoming interactive work and no queued batch work. Compute hosts
+have already been shut down deterministically, so do not schedule workload.
+Call Apply facility energy plan once with cooling_factor,
+cooling_setpoint_c, and battery_power_kw.
+""",
+    expected_output="Accepted idle-hour thermal and electrical plan.",
+    agent=integrated_ems_agent,
+)

@@ -74,6 +74,37 @@ class DataCenterState:
         self.battery_max_discharge_kw = cfg.battery_max_discharge_kw
         self.battery_charge_efficiency = cfg.battery_charge_eff
         self.battery_discharge_efficiency = cfg.battery_discharge_eff
+        if cfg.battery_capex_per_kwh < 0:
+            raise ValueError("Battery CAPEX per kWh cannot be negative.")
+        if cfg.battery_cycle_life <= 0:
+            raise ValueError("Battery cycle life must be positive.")
+        if not 0.0 <= cfg.battery_residual_value_fraction < 1.0:
+            raise ValueError(
+                "Battery residual value fraction must be in [0, 1)."
+            )
+        self.battery_capex_per_kwh = cfg.battery_capex_per_kwh
+        self.battery_cycle_life = cfg.battery_cycle_life
+        self.battery_residual_value_fraction = (
+            cfg.battery_residual_value_fraction
+        )
+        self.battery_upfront_cost = (
+            self.battery_capacity_kwh * self.battery_capex_per_kwh
+        )
+        self.battery_usable_cycle_kwh = (
+            (self.battery_max_soc - self.battery_min_soc)
+            * self.battery_capacity_kwh
+            * self.battery_discharge_efficiency
+        )
+        amortisable_cost = self.battery_upfront_cost * (
+            1.0 - self.battery_residual_value_fraction
+        )
+        lifetime_delivered_kwh = (
+            self.battery_usable_cycle_kwh * self.battery_cycle_life
+        )
+        self.battery_degradation_cost_per_kwh = (
+            amortisable_cost / lifetime_delivered_kwh
+        )
+        self.battery_equivalent_full_cycles = 0.0
         self.battery_command_kw = 0.0
         # Positive = discharge to load; negative = charging from supply.
         self.battery_power_kw = 0.0
@@ -103,6 +134,8 @@ class DataCenterState:
         self.grid_to_load_kw = 0.0
         self.grid_to_battery_kw = 0.0
         self.solar_curtailed_kw = 0.0
+        self.grid_energy_cost = 0.0
+        self.battery_degradation_cost = 0.0
         self.cost = 0.0
         self.facility_power_capacity_kw = cfg.facility_power_capacity_kw
         self.facility_operating_limit_kw = (

@@ -306,6 +306,15 @@ def run_simulation(
             "battery_discharge_kwh": discharge_power_kw * dt,
             "battery_charge_kwh": charge_power_kw * dt,
             "battery_SOC": state.battery_soc,
+            "battery_capex_per_kwh": state.battery_capex_per_kwh,
+            "battery_cycle_life": state.battery_cycle_life,
+            "battery_degradation_cost_per_kwh": (
+                state.battery_degradation_cost_per_kwh
+            ),
+            "battery_degradation_cost": state.battery_degradation_cost,
+            "battery_equivalent_full_cycles": (
+                state.battery_equivalent_full_cycles
+            ),
             "grid_power_kw": state.grid_power_kw,
             "facility_power_capacity_kw": state.facility_power_capacity_kw,
             "facility_operating_limit_kw": state.facility_operating_limit_kw,
@@ -319,6 +328,7 @@ def run_simulation(
             "temperature_C": state.temperature,
             "temperature_violation": temperature_violation,
             "electricity_price": state.grid_price,
+            "grid_energy_cost": state.grid_energy_cost,
             "cost": state.cost,
             "pue": pue,
         }

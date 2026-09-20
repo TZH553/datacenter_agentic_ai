@@ -51,6 +51,12 @@ def calculate_summary(name, df, is_agentic):
         "Battery Degradation Cost": df[
             "battery_degradation_cost"
         ].sum(),
+        "Counterfactual Grid Cost Without Battery": df[
+            "counterfactual_grid_cost_without_battery"
+        ].sum(),
+        "Battery Net Saving vs Grid": df[
+            "battery_net_saving_vs_grid"
+        ].sum(),
         "Equivalent Full Cycles": df[
             "battery_equivalent_full_cycles"
         ].iloc[-1],
@@ -58,6 +64,7 @@ def calculate_summary(name, df, is_agentic):
             df["unmet_workload"] * df["timestep_h"]
         ).sum(),
         "Cost": df["cost"].sum(),
+        "Total Cost": df["cost"].sum(),
         "Peak Total Power (kW)": df["total_power_kw"].max(),
         "Peak Grid Power (kW)": df["grid_power_kw"].max(),
         "Average PUE": df["pue"].mean(),

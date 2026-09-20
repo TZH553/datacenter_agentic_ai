@@ -18,6 +18,7 @@ from tasks import (
     energy_task_four,
     energy_task_three,
     facility_energy_task,
+    idle_facility_task,
     integrated_task,
     power_task,
     scheduler_task,
@@ -27,9 +28,27 @@ from tasks import (
 ARCHITECTURES = ("four_agent", "three_agent", "two_agent", "single_agent")
 
 
-def get_data_center_crew(architecture="four_agent"):
+def get_data_center_crew(architecture="four_agent", skip_compute=False):
     """Build the selected CrewAI architecture."""
-    if architecture == "four_agent":
+    if architecture not in ARCHITECTURES:
+        raise ValueError(
+            f"Unknown architecture {architecture!r}; "
+            f"choose one of {ARCHITECTURES}."
+        )
+
+    if skip_compute and architecture == "four_agent":
+        agents = [cooling_agent, energy_agent]
+        tasks = [cooling_task_four, energy_task_four]
+    elif skip_compute and architecture == "three_agent":
+        agents = [cooling_agent, energy_agent]
+        tasks = [cooling_task_three, energy_task_three]
+    elif skip_compute and architecture == "two_agent":
+        agents = [facility_energy_agent]
+        tasks = [facility_energy_task]
+    elif skip_compute and architecture == "single_agent":
+        agents = [integrated_ems_agent]
+        tasks = [idle_facility_task]
+    elif architecture == "four_agent":
         agents = [
             scheduler_agent,
             power_governor_agent,
@@ -53,11 +72,6 @@ def get_data_center_crew(architecture="four_agent"):
     elif architecture == "single_agent":
         agents = [integrated_ems_agent]
         tasks = [integrated_task]
-    else:
-        raise ValueError(
-            f"Unknown architecture {architecture!r}; "
-            f"choose one of {ARCHITECTURES}."
-        )
 
     return Crew(
         # CrewAI's constructor is typed as list[BaseAgent], while these

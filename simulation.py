@@ -15,7 +15,7 @@ from models import (
     update_temperature,
 )
 from state import reset_state, state
-from workload import add_workload, advance_batch_queue
+from workload import add_trace_workload, add_workload, advance_batch_queue
 
 
 def _crew_worker(initial_state, result_queue, architecture):
@@ -113,6 +113,7 @@ def run_simulation(
     config=None,
     agentic_architecture="four_agent",
     agent_timeout_seconds=120,
+    trace_arrivals=None,
 ):
     """Run all power and energy calculations using one consistent timestep."""
     reset_state(config)
@@ -134,6 +135,8 @@ def run_simulation(
         raise ValueError("Every input profile must contain at least 'hours' values.")
     if ambient_profile is not None and len(ambient_profile) < hours:
         raise ValueError("ambient_profile must contain at least 'hours' values.")
+    if trace_arrivals is not None and len(trace_arrivals) < hours:
+        raise ValueError("trace_arrivals must contain at least 'hours' bins.")
 
     if is_agentic:
         from crew import ARCHITECTURES
@@ -147,7 +150,10 @@ def run_simulation(
         state.grid_price = float(price_profile[hour])
         if ambient_profile is not None:
             state.ambient_temperature = float(ambient_profile[hour])
-        add_workload(workload_profile[hour])
+        if trace_arrivals is None:
+            add_workload(workload_profile[hour])
+        else:
+            add_trace_workload(trace_arrivals[hour])
         state.battery_command_kw = 0.0
 
         response_time = 0.0
@@ -259,6 +265,14 @@ def run_simulation(
         result = {
             "hour": hour,
             "timestep_h": dt,
+            "workload_source": (
+                "cloud_trace" if trace_arrivals is not None else "profile"
+            ),
+            "trace_bin_start": (
+                trace_arrivals[hour]["bin_start"]
+                if trace_arrivals is not None
+                else None
+            ),
             "hardware_profile": state.hardware_profile_name,
             "processor_model": state.processor_model,
             "accelerator_model": state.accelerator_model,

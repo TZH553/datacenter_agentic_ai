@@ -14,18 +14,25 @@ class Config:
     hours: int = 168
     timestep_h: float = 1.0
 
-    # Default homogeneous hardware profile. These values describe the full
-    # server, including its processor, memory, fans, storage and any installed
-    # accelerator. Change them here before running an experiment.
+    # Default homogeneous hardware profile. Base-server power covers CPU,
+    # memory, fans and storage; accelerator power is modelled separately.
     n_clusters: int = 10
-    hardware_profile_name: str = "Generic CPU compute server"
+    hardware_profile_name: str = "General cloud CPU/GPU cluster"
     processor_model: str = "Assumed 20-core server processor"
-    accelerator_model: str = "None"
+    accelerator_model: str = "NVIDIA H100 SXM (assumed)"
     servers_per_cluster: int = 5
     processing_unit_name: str = "CPU-core equivalent"
     processing_capacity_per_server: float = 20.0
     server_idle_power_kw: float = 0.20
     server_max_power_kw: float = 0.60
+
+    # Accelerator assumptions apply only to trace rows labelled GPU. The
+    # source trace does not report GPU counts, so Node_Count is interpreted as
+    # the requested GPU count. CPU server power above excludes GPU power.
+    gpu_server_count: int = 5
+    gpus_per_gpu_server: int = 8
+    gpu_idle_power_kw: float = 0.07
+    gpu_max_power_kw: float = 0.70
 
     # Optional cluster-level overrides retained for sensitivity studies and
     # backwards compatibility. None derives each value from the server profile.
@@ -39,7 +46,7 @@ class Config:
     cooling_cop: float = 3.5
     cooling_min_cop: float = 1.5
     cooling_cop_temp_coefficient: float = 0.03
-    cooling_nominal_capacity_kw: float = 25.0
+    cooling_nominal_capacity_kw: float = 60.0
     cooling_fan_power_kw: float = 0.50
     cooling_setpoint_c: float = 22.0
     cooling_min_setpoint_c: float = 19.2
@@ -53,7 +60,7 @@ class Config:
     min_temp_c: float = 19.2
     max_temp_c: float = 22.8
 
-    facility_power_capacity_kw: float = 35.0
+    facility_power_capacity_kw: float = 75.0
     facility_operating_limit_fraction: float = 0.95
     power_risk_warning_fraction: float = 0.80
     power_risk_critical_fraction: float = 0.95

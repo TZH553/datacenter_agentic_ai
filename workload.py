@@ -1,6 +1,66 @@
 from state import state
 
 
+def _plan_batch_service(requested_cpu):
+    """Build an EDF service plan constrained by hourly GPU capacity."""
+    ordered_jobs = sorted(
+        state.batch_backlog,
+        key=lambda queued_job: queued_job["hours_left"],
+    )
+
+    # First calculate the GPU demand implied by the requested CPU service.
+    remaining_requested_cpu = max(0.0, float(requested_cpu))
+    requested_gpu_work = state.interactive_gpu_work
+    for job in ordered_jobs:
+        desired_cpu = min(job["cpu"], remaining_requested_cpu)
+        if job["cpu"] > 1e-9:
+            requested_gpu_work += (
+                job.get("gpu_work", 0.0) * desired_cpu / job["cpu"]
+            )
+        remaining_requested_cpu -= desired_cpu
+        if remaining_requested_cpu <= 1e-9:
+            break
+
+    # Then produce the feasible plan. CPU-only work can still run when all
+    # GPUs are occupied, so later CPU-only jobs are not unnecessarily blocked.
+    remaining_cpu = max(0.0, float(requested_cpu))
+    remaining_gpu_work = max(
+        0.0,
+        state.total_gpu_capacity * state.timestep_h
+        - state.interactive_gpu_work,
+    )
+    selected_gpu_work = min(
+        state.interactive_gpu_work,
+        state.total_gpu_capacity * state.timestep_h,
+    )
+    selected_cpu = 0.0
+    for job in ordered_jobs:
+        desired_cpu = min(job["cpu"], remaining_cpu)
+        gpu_per_cpu = (
+            job.get("gpu_work", 0.0) / job["cpu"]
+            if job["cpu"] > 1e-9
+            else 0.0
+        )
+        if gpu_per_cpu > 0.0:
+            served_cpu = min(
+                desired_cpu,
+                remaining_gpu_work / gpu_per_cpu,
+            )
+        else:
+            served_cpu = desired_cpu
+        job["_selected_cpu"] = served_cpu
+        selected_cpu += served_cpu
+        remaining_cpu -= served_cpu
+        served_gpu_work = served_cpu * gpu_per_cpu
+        selected_gpu_work += served_gpu_work
+        remaining_gpu_work -= served_gpu_work
+
+    state.batch_served_cpu = selected_cpu
+    state.scheduled_gpu_work = selected_gpu_work
+    state.requested_gpu_demand = requested_gpu_work / state.timestep_h
+    state.gpu_demand = selected_gpu_work / state.timestep_h
+
+
 def add_workload(workload_fraction):
     """Convert normalized demand into explicit CPU workload units.
 
@@ -18,8 +78,11 @@ def add_workload(workload_fraction):
         state.batch_backlog.append(
             {"cpu": state.batch_arrival_cpu, "hours_left": state.batch_deadline_h}
         )
+    state.interactive_gpu_work = 0.0
+    state.batch_arrival_gpu_work = 0.0
+    state.batch_backlog_gpu_work = 0.0
     state.batch_backlog_cpu = sum(job["cpu"] for job in state.batch_backlog)
-    state.batch_served_cpu = state.batch_backlog_cpu
+    _plan_batch_service(state.batch_backlog_cpu)
     state.pending_workload_cpu = (
         state.interactive_workload_cpu + state.batch_served_cpu
     )
@@ -34,7 +97,11 @@ def add_trace_workload(hour_arrivals):
     batch_jobs = hour_arrivals.get("batch_jobs", [])
 
     state.interactive_workload_cpu = interactive_cpu
+    state.interactive_gpu_work = max(
+        0.0, float(hour_arrivals.get("interactive_gpu_work", 0.0))
+    )
     state.batch_arrival_cpu = 0.0
+    state.batch_arrival_gpu_work = 0.0
     for source_job in batch_jobs:
         cpu_work = max(0.0, float(source_job["cpu"]))
         if cpu_work <= 1e-9:
@@ -47,6 +114,9 @@ def add_trace_workload(hour_arrivals):
         job["hours_left"] = hours_left
         state.batch_backlog.append(job)
         state.batch_arrival_cpu += cpu_work
+        state.batch_arrival_gpu_work += max(
+            0.0, float(job.get("gpu_work", 0.0))
+        )
 
     arrival_cpu = (
         state.interactive_workload_cpu + state.batch_arrival_cpu
@@ -57,7 +127,10 @@ def add_trace_workload(hour_arrivals):
     state.batch_backlog_cpu = sum(
         job["cpu"] for job in state.batch_backlog
     )
-    state.batch_served_cpu = state.batch_backlog_cpu
+    state.batch_backlog_gpu_work = sum(
+        job.get("gpu_work", 0.0) for job in state.batch_backlog
+    )
+    _plan_batch_service(state.batch_backlog_cpu)
     state.pending_workload_cpu = (
         state.interactive_workload_cpu + state.batch_served_cpu
     )
@@ -70,7 +143,8 @@ def select_batch_service(service_fraction):
     due_cpu = sum(
         job["cpu"] for job in state.batch_backlog if job["hours_left"] <= 1
     )
-    state.batch_served_cpu = max(due_cpu, state.batch_backlog_cpu * fraction)
+    requested_cpu = max(due_cpu, state.batch_backlog_cpu * fraction)
+    _plan_batch_service(requested_cpu)
     state.pending_workload_cpu = (
         state.interactive_workload_cpu + state.batch_served_cpu
     )
@@ -79,17 +153,18 @@ def select_batch_service(service_fraction):
 
 def advance_batch_queue():
     """Serve earliest-deadline jobs, then age and expire the remainder."""
-    remaining_service = state.batch_served_cpu
     service_order = sorted(
         state.batch_backlog,
         key=lambda job: job["hours_left"],
     )
     for job in service_order:
-        if remaining_service <= 1e-9:
-            break
-        served = min(job["cpu"], remaining_service)
+        served = min(job["cpu"], job.pop("_selected_cpu", 0.0))
+        cpu_before = job["cpu"]
+        if cpu_before > 1e-9:
+            job["gpu_work"] = job.get("gpu_work", 0.0) * (
+                1.0 - served / cpu_before
+            )
         job["cpu"] -= served
-        remaining_service -= served
     state.batch_backlog = [j for j in state.batch_backlog if j["cpu"] > 1e-9]
     missed = 0.0
     for job in state.batch_backlog:
@@ -99,4 +174,7 @@ def advance_batch_queue():
     state.batch_backlog = [j for j in state.batch_backlog if j["hours_left"] > 0]
     state.batch_deadline_missed_cpu = missed
     state.batch_backlog_cpu = sum(job["cpu"] for job in state.batch_backlog)
+    state.batch_backlog_gpu_work = sum(
+        job.get("gpu_work", 0.0) for job in state.batch_backlog
+    )
     return missed

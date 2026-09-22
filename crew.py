@@ -18,10 +18,12 @@ from tasks import (
     energy_task_four,
     energy_task_three,
     facility_battery_task,
+    facility_cooling_task,
     facility_energy_task,
     idle_facility_task,
     integrated_task,
     integrated_compute_task,
+    integrated_cooling_task,
     integrated_energy_task,
     power_task,
     scheduler_task,
@@ -35,6 +37,7 @@ def get_data_center_crew(
     architecture="four_agent",
     skip_compute=False,
     skip_cooling=False,
+    skip_battery=False,
 ):
     """Build the selected CrewAI architecture."""
     if architecture not in ARCHITECTURES:
@@ -43,66 +46,58 @@ def get_data_center_crew(
             f"choose one of {ARCHITECTURES}."
         )
 
-    if skip_compute and skip_cooling and architecture == "four_agent":
-        agents = [energy_agent]
-        tasks = [energy_task_four]
-    elif skip_compute and skip_cooling and architecture == "three_agent":
-        agents = [energy_agent]
-        tasks = [energy_task_three]
-    elif skip_compute and skip_cooling and architecture == "two_agent":
-        agents = [facility_energy_agent]
-        tasks = [facility_battery_task]
-    elif skip_compute and skip_cooling and architecture == "single_agent":
-        agents = [integrated_ems_agent]
-        tasks = [integrated_energy_task]
-    elif skip_cooling and architecture == "four_agent":
-        agents = [scheduler_agent, power_governor_agent, energy_agent]
-        tasks = [scheduler_task, power_task, energy_task_four]
-    elif skip_cooling and architecture == "three_agent":
-        agents = [compute_agent, energy_agent]
-        tasks = [compute_task, energy_task_three]
-    elif skip_cooling and architecture == "two_agent":
-        agents = [compute_agent, facility_energy_agent]
-        tasks = [compute_task, facility_battery_task]
-    elif skip_cooling and architecture == "single_agent":
-        agents = [integrated_ems_agent]
-        tasks = [integrated_compute_task, integrated_energy_task]
-    elif skip_compute and architecture == "four_agent":
-        agents = [cooling_agent, energy_agent]
-        tasks = [cooling_task_four, energy_task_four]
-    elif skip_compute and architecture == "three_agent":
-        agents = [cooling_agent, energy_agent]
-        tasks = [cooling_task_three, energy_task_three]
-    elif skip_compute and architecture == "two_agent":
-        agents = [facility_energy_agent]
-        tasks = [facility_energy_task]
-    elif skip_compute and architecture == "single_agent":
-        agents = [integrated_ems_agent]
-        tasks = [idle_facility_task]
-    elif architecture == "four_agent":
-        agents = [
-            scheduler_agent,
-            power_governor_agent,
-            cooling_agent,
-            energy_agent,
-        ]
-        tasks = [
-            scheduler_task,
-            power_task,
-            cooling_task_four,
-            energy_task_four,
-        ]
+    agents = []
+    tasks = []
+    if architecture == "four_agent":
+        if not skip_compute:
+            agents.extend([scheduler_agent, power_governor_agent])
+            tasks.extend([scheduler_task, power_task])
+        if not skip_cooling:
+            agents.append(cooling_agent)
+            tasks.append(cooling_task_four)
+        if not skip_battery:
+            agents.append(energy_agent)
+            tasks.append(energy_task_four)
     elif architecture == "three_agent":
-        agents = [compute_agent, cooling_agent, energy_agent]
-        tasks = [compute_task, cooling_task_three, energy_task_three]
+        if not skip_compute:
+            agents.append(compute_agent)
+            tasks.append(compute_task)
+        if not skip_cooling:
+            agents.append(cooling_agent)
+            tasks.append(cooling_task_three)
+        if not skip_battery:
+            agents.append(energy_agent)
+            tasks.append(energy_task_three)
     elif architecture == "two_agent":
-        # Agent 1 owns scheduling + consolidation; Agent 2 coordinates the
-        # thermal and electrical subsystems.
-        agents = [compute_agent, facility_energy_agent]
-        tasks = [compute_task, facility_energy_task]
-    elif architecture == "single_agent":
+        if not skip_compute:
+            agents.append(compute_agent)
+            tasks.append(compute_task)
+        if not skip_cooling and not skip_battery:
+            agents.append(facility_energy_agent)
+            tasks.append(facility_energy_task)
+        elif not skip_cooling:
+            agents.append(facility_energy_agent)
+            tasks.append(facility_cooling_task)
+        elif not skip_battery:
+            agents.append(facility_energy_agent)
+            tasks.append(facility_battery_task)
+    elif not (skip_compute or skip_cooling or skip_battery):
         agents = [integrated_ems_agent]
         tasks = [integrated_task]
+    elif skip_compute and not skip_cooling and not skip_battery:
+        agents = [integrated_ems_agent]
+        tasks = [idle_facility_task]
+    else:
+        agents = [integrated_ems_agent]
+        if not skip_compute:
+            tasks.append(integrated_compute_task)
+        if not skip_cooling:
+            tasks.append(integrated_cooling_task)
+        if not skip_battery:
+            tasks.append(integrated_energy_task)
+
+    if not tasks:
+        raise ValueError("All AI decisions were skipped; no crew is required.")
 
     return Crew(
         # CrewAI's constructor is typed as list[BaseAgent], while these

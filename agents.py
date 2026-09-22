@@ -90,7 +90,11 @@ facility_energy_agent = Agent(
         "You coordinate thermal safety, cooling efficiency, renewable energy, "
         "grid price, battery reserve, and facility power risk."
     ),
-    tools=[get_cluster_telemetry, apply_facility_energy_plan],
+    tools=[
+        get_cluster_telemetry,
+        apply_facility_energy_plan,
+        dispatch_battery,
+    ],
     verbose=True,
     max_iter=3,
     llm=specialist_llm,
@@ -107,6 +111,8 @@ integrated_ems_agent = Agent(
         get_cluster_telemetry,
         apply_ems_plan,
         apply_facility_energy_plan,
+        apply_compute_plan,
+        dispatch_battery,
     ],
     verbose=True,
     max_iter=3,

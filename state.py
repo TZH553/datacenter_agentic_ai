@@ -29,6 +29,10 @@ class DataCenterState:
         )
         self.server_idle_power_kw = cfg.server_idle_power_kw
         self.server_max_power_kw = cfg.server_max_power_kw
+        self.gpu_server_count = cfg.gpu_server_count
+        self.gpus_per_gpu_server = cfg.gpus_per_gpu_server
+        self.gpu_idle_power_kw = cfg.gpu_idle_power_kw
+        self.gpu_max_power_kw = cfg.gpu_max_power_kw
 
         if cfg.n_clusters <= 0:
             raise ValueError("Number of clusters must be positive.")
@@ -41,6 +45,16 @@ class DataCenterState:
         if not 0 <= cfg.server_idle_power_kw <= cfg.server_max_power_kw:
             raise ValueError(
                 "Server power must satisfy 0 <= idle <= maximum power."
+            )
+        if not 0 <= cfg.gpu_server_count <= (
+            cfg.n_clusters * cfg.servers_per_cluster
+        ):
+            raise ValueError("GPU server count must fit within the cluster.")
+        if cfg.gpus_per_gpu_server <= 0:
+            raise ValueError("GPUs per GPU server must be positive.")
+        if not 0 <= cfg.gpu_idle_power_kw <= cfg.gpu_max_power_kw:
+            raise ValueError(
+                "GPU power must satisfy 0 <= idle <= maximum power."
             )
 
         cluster_specs = cfg.clusters
@@ -116,6 +130,14 @@ class DataCenterState:
         self.batch_backlog_cpu = 0.0
         self.batch_served_cpu = 0.0
         self.batch_deadline_missed_cpu = 0.0
+        self.interactive_gpu_work = 0.0
+        self.batch_arrival_gpu_work = 0.0
+        self.batch_backlog_gpu_work = 0.0
+        self.scheduled_gpu_work = 0.0
+        self.requested_gpu_demand = 0.0
+        self.gpu_demand = 0.0
+        self.gpu_utilisation = 0.0
+        self.active_gpu_count = 0
         self.interactive_workload_fraction = cfg.interactive_workload_fraction
         self.batch_deadline_h = cfg.batch_deadline_h
 
@@ -184,6 +206,8 @@ class DataCenterState:
         self.cooling_heat_removed_kw = 0.0
 
         self.it_power_kw = 0.0
+        self.cpu_it_power_kw = 0.0
+        self.accelerator_power_kw = 0.0
         self.cooling_power_kw = 0.0
         self.total_power_kw = 0.0
         self.grid_power_kw = 0.0
@@ -209,6 +233,10 @@ class DataCenterState:
     @property
     def total_cpu_capacity(self):
         return sum(host["cpu_capacity"] for host in self.hosts.values())
+
+    @property
+    def total_gpu_capacity(self):
+        return self.gpu_server_count * self.gpus_per_gpu_server
 
 
 state = DataCenterState()

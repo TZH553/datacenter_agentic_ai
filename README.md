@@ -191,6 +191,31 @@ run: workload scheduling and battery dispatch are not skipped merely because
 cooling is unchanged. Hourly output records `cooling_ai_skipped`, and the
 experiment summary reports `Cooling AI Skips`.
 
+Battery dispatch uses the same event-driven principle. The battery AI decision
+is reused only when the previous cooling decision is also reusable and grid
+price, solar power, CPU/GPU demand, battery SOC, temperature, ambient
+temperature, and facility power risk remain within their configured
+deadbands. Reuse is disabled near the minimum or maximum SOC. The previous
+`battery_command_kw` is retained exactly, while the battery model continues to
+apply efficiency, power, load and SOC limits every hour.
+
+```python
+battery_skip_price_tolerance = 0.005
+battery_skip_solar_tolerance_kw = 0.10
+battery_skip_cpu_tolerance = 0.10
+battery_skip_gpu_tolerance = 0.05
+battery_skip_soc_tolerance = 0.01
+battery_skip_temperature_tolerance_c = 0.10
+battery_skip_ambient_tolerance_c = 0.50
+battery_skip_power_risk_tolerance = 0.02
+battery_skip_soc_guard_margin = 0.05
+```
+
+The hourly files record `battery_ai_skipped`. If scheduling, cooling, and
+battery decisions are all reusable in the same hour, the simulator avoids the
+CrewAI process entirely and records `all_ai_skipped`. The experiment summary
+reports both `Battery AI Skips` and `Complete CrewAI Skips`.
+
 ## Heterogeneous cluster example
 
 Input workload profiles remain normalized fractions from 0 to 1. The simulator

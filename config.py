@@ -100,6 +100,18 @@ class Config:
     battery_cycle_life: int = 10_000
     battery_residual_value_fraction: float = 0.0
 
+    # Reuse the previous AI battery command while all dispatch inputs stay
+    # within these deadbands. A decision is forced near either SOC boundary.
+    battery_skip_price_tolerance: float = 0.005
+    battery_skip_solar_tolerance_kw: float = 0.10
+    battery_skip_cpu_tolerance: float = 0.10
+    battery_skip_gpu_tolerance: float = 0.05
+    battery_skip_soc_tolerance: float = 0.01
+    battery_skip_temperature_tolerance_c: float = 0.10
+    battery_skip_ambient_tolerance_c: float = 0.50
+    battery_skip_power_risk_tolerance: float = 0.02
+    battery_skip_soc_guard_margin: float = 0.05
+
     max_workload_shed: float = 0.20
     sla_limit: float = 0.05
     grid_emission_kg_per_kwh: float = 0.55

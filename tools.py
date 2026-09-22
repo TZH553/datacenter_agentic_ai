@@ -2,7 +2,11 @@ from typing import Dict
 
 from crewai.tools import tool
 
-from models import calculate_host_power, estimate_cooling
+from models import (
+    calculate_host_power,
+    estimate_accelerator_power,
+    estimate_cooling,
+)
 from state import state
 from workload import select_batch_service
 
@@ -101,6 +105,7 @@ def _projected_facility_power(
         for name, host in state.hosts.items()
         if allocations[name] > 0.0
     )
+    it_power_kw += estimate_accelerator_power(state.gpu_demand)[0]
     cooling_power_kw, _, _ = estimate_cooling(
         it_power_kw,
         cooling_factor,
@@ -276,6 +281,10 @@ def get_cluster_telemetry() -> str:
             ),
             "interactive_workload_cpu_units": round(state.interactive_workload_cpu, 2),
             "batch_backlog_cpu_units": round(state.batch_backlog_cpu, 2),
+            "accelerator_model": state.accelerator_model,
+            "total_gpu_capacity": state.total_gpu_capacity,
+            "scheduled_average_gpus": round(state.gpu_demand, 3),
+            "accelerator_power_kw": round(state.accelerator_power_kw, 3),
             "nearest_batch_deadline_h": min(
                 (job["hours_left"] for job in state.batch_backlog), default=None
             ),

@@ -23,6 +23,7 @@ def _crew_worker(
     result_queue,
     architecture,
     skip_compute,
+    skip_cooling,
 ):
     """Execute CrewAI in an isolated process and return its updated state."""
     try:
@@ -34,6 +35,7 @@ def _crew_worker(
         data_center_crew = get_data_center_crew(
             architecture,
             skip_compute=skip_compute,
+            skip_cooling=skip_cooling,
         )
         crew_result = data_center_crew.kickoff()
         raw_usage = getattr(crew_result, "token_usage", None)
@@ -68,6 +70,7 @@ def run_crew_with_timeout(
     architecture,
     timeout_seconds=120,
     skip_compute=False,
+    skip_cooling=False,
 ):
     """Run CrewAI in a child process that can be stopped on timeout."""
     context = mp.get_context("spawn")
@@ -79,6 +82,7 @@ def run_crew_with_timeout(
             result_queue,
             architecture,
             skip_compute,
+            skip_cooling,
         ),
     )
     process.start()
@@ -115,6 +119,48 @@ def run_crew_with_timeout(
     )
 
 
+def _cooling_input_signature():
+    """Return supervisory variables that can change a cooling decision."""
+    return {
+        "temperature": state.temperature,
+        "ambient": state.ambient_temperature,
+        "cpu_demand": state.pending_workload_cpu,
+        "gpu_demand": state.requested_gpu_demand,
+        "grid_price": state.grid_price,
+        "solar_kw": state.solar_kw,
+        "battery_soc": state.battery_soc,
+        "power_risk": state.power_risk_ratio,
+    }
+
+
+def _can_reuse_cooling(previous_signature, current_signature):
+    """Reuse cooling only when all relevant inputs remain within deadbands."""
+    if previous_signature is None:
+        return False
+    margin = state.cooling_skip_thermal_guard_margin_c
+    if not (
+        state.min_temp_c + margin
+        < state.temperature
+        < state.max_temp_c - margin
+    ):
+        return False
+    tolerances = {
+        "temperature": state.cooling_skip_temperature_tolerance_c,
+        "ambient": state.cooling_skip_ambient_tolerance_c,
+        "cpu_demand": state.cooling_skip_cpu_tolerance,
+        "gpu_demand": state.cooling_skip_gpu_tolerance,
+        "grid_price": state.cooling_skip_price_tolerance,
+        "solar_kw": state.cooling_skip_solar_tolerance_kw,
+        "battery_soc": state.cooling_skip_battery_soc_tolerance,
+        "power_risk": state.cooling_skip_power_risk_tolerance,
+    }
+    return all(
+        abs(current_signature[name] - previous_signature[name])
+        <= tolerance
+        for name, tolerance in tolerances.items()
+    )
+
+
 def run_simulation(
     controller,
     workload_profile,
@@ -132,6 +178,7 @@ def run_simulation(
     reset_state(config)
     results = []
     dt = state.timestep_h
+    last_cooling_decision_signature = None
 
     print()
     print("=" * 60)
@@ -173,9 +220,16 @@ def run_simulation(
         timed_out = False
         fallback_used = False
         scheduling_ai_skipped = False
+        cooling_ai_skipped = False
         token_usage = {}
 
+        current_cooling_signature = _cooling_input_signature()
+
         if is_agentic:
+            cooling_ai_skipped = _can_reuse_cooling(
+                last_cooling_decision_signature,
+                current_cooling_signature,
+            )
             if trace_arrivals is not None:
                 incoming_cpu = float(
                     trace_arrivals[hour].get("arrival_cpu", 0.0)
@@ -194,6 +248,16 @@ def run_simulation(
                     f"\n[AGENTIC] Hour {hour} has no incoming or queued "
                     "work; skipping AI scheduling."
                 )
+            if cooling_ai_skipped:
+                print(
+                    f"\n[AGENTIC] Hour {hour} thermal, workload, price, "
+                    "solar, battery, and power-risk inputs are unchanged; "
+                    "reusing the previous cooling decision."
+                )
+            retained_cooling = (
+                state.cooling_factor,
+                state.cooling_setpoint_c,
+            )
             print(f"\n[AGENTIC] Running CrewAI for hour {hour}...")
             start_time = time.perf_counter()
             (
@@ -205,6 +269,7 @@ def run_simulation(
                 architecture=agentic_architecture,
                 timeout_seconds=agent_timeout_seconds,
                 skip_compute=scheduling_ai_skipped,
+                skip_cooling=cooling_ai_skipped,
             )
             response_time = time.perf_counter() - start_time
 
@@ -215,6 +280,11 @@ def run_simulation(
                     print(crew_error)
                 fallback_used = True
                 apply_action(RuleBasedController().decide())
+                if cooling_ai_skipped:
+                    (
+                        state.cooling_factor,
+                        state.cooling_setpoint_c,
+                    ) = retained_cooling
             else:
                 print(
                     f"[AGENTIC] CrewAI completed in "
@@ -240,6 +310,13 @@ def run_simulation(
                         print(f"[AGENT OUTPUT] {crew_output}")
                     fallback_used = True
                     apply_action(RuleBasedController().decide())
+                    if cooling_ai_skipped:
+                        (
+                            state.cooling_factor,
+                            state.cooling_setpoint_c,
+                        ) = retained_cooling
+            if not cooling_ai_skipped:
+                last_cooling_decision_signature = current_cooling_signature
         else:
             apply_action(controller.decide())
 
@@ -356,6 +433,7 @@ def run_simulation(
             "agent_timed_out": int(timed_out),
             "fallback_used": int(fallback_used),
             "scheduling_ai_skipped": int(scheduling_ai_skipped),
+            "cooling_ai_skipped": int(cooling_ai_skipped),
             "agentic_architecture": (
                 agentic_architecture if is_agentic else "not_applicable"
             ),

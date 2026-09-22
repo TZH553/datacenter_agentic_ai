@@ -85,7 +85,11 @@ def load_cloud_workload_trace(
     frame["Submit_Time"] = pd.to_datetime(
         frame["Submit_Time"], errors="raise"
     )
-    numeric_columns = ["Used_CPUs", "Execution_Time(Seconds)"]
+    numeric_columns = [
+        "Used_CPUs",
+        "Execution_Time(Seconds)",
+        "Node_Count",
+    ]
     for column in numeric_columns:
         frame[column] = pd.to_numeric(frame[column], errors="raise")
     if (frame[numeric_columns] < 0).any().any():
@@ -97,6 +101,12 @@ def load_cloud_workload_trace(
         / 3600.0
         * config.trace_scale_factor
     )
+    frame["gpu_work"] = (
+        frame["Node_Count"]
+        * frame["Execution_Time(Seconds)"]
+        / 3600.0
+        * config.trace_scale_factor
+    ).where(frame["Job_Type"].str.strip().str.lower() == "gpu", 0.0)
 
     if config.trace_window_start is None:
         window_start = frame["Submit_Time"].min().floor("h")
@@ -135,6 +145,14 @@ def load_cloud_workload_trace(
                     ),
                     "job_type": job_type,
                     "priority": priority,
+                    # The trace has no GPU-count field. For GPU-labelled jobs,
+                    # Node_Count is an explicit, documented proxy for GPUs.
+                    "requested_gpus": (
+                        int(row.Node_Count)
+                        if job_type.lower() == "gpu"
+                        else 0
+                    ),
+                    "gpu_work": float(row.gpu_work),
                 }
             )
 

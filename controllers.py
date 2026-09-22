@@ -1,4 +1,4 @@
-from models import estimate_cooling
+from models import estimate_accelerator_power, estimate_cooling
 from state import state
 
 
@@ -119,6 +119,9 @@ class FixedOptimisationController:
             for name, host in state.hosts.items()
             if power[name]
         )
+        predicted_it_power_kw += estimate_accelerator_power(
+            state.gpu_demand
+        )[0]
         switching_count = sum(
             state.hosts[name]["active"] != power[name] for name in state.hosts
         )

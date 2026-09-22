@@ -24,6 +24,7 @@ def _crew_worker(
     architecture,
     skip_compute,
     skip_cooling,
+    skip_battery,
 ):
     """Execute CrewAI in an isolated process and return its updated state."""
     try:
@@ -36,6 +37,7 @@ def _crew_worker(
             architecture,
             skip_compute=skip_compute,
             skip_cooling=skip_cooling,
+            skip_battery=skip_battery,
         )
         crew_result = data_center_crew.kickoff()
         raw_usage = getattr(crew_result, "token_usage", None)
@@ -71,6 +73,7 @@ def run_crew_with_timeout(
     timeout_seconds=120,
     skip_compute=False,
     skip_cooling=False,
+    skip_battery=False,
 ):
     """Run CrewAI in a child process that can be stopped on timeout."""
     context = mp.get_context("spawn")
@@ -83,6 +86,7 @@ def run_crew_with_timeout(
             architecture,
             skip_compute,
             skip_cooling,
+            skip_battery,
         ),
     )
     process.start()
@@ -161,6 +165,48 @@ def _can_reuse_cooling(previous_signature, current_signature):
     )
 
 
+def _battery_input_signature():
+    """Return variables that can materially change battery dispatch."""
+    return {
+        "grid_price": state.grid_price,
+        "solar_kw": state.solar_kw,
+        "cpu_demand": state.pending_workload_cpu,
+        "gpu_demand": state.requested_gpu_demand,
+        "battery_soc": state.battery_soc,
+        "temperature": state.temperature,
+        "ambient": state.ambient_temperature,
+        "power_risk": state.power_risk_ratio,
+    }
+
+
+def _can_reuse_battery(previous_signature, current_signature):
+    """Reuse battery dispatch only when inputs are stable and SOC is safe."""
+    if previous_signature is None:
+        return False
+    margin = state.battery_skip_soc_guard_margin
+    if not (
+        state.battery_min_soc + margin
+        < state.battery_soc
+        < state.battery_max_soc - margin
+    ):
+        return False
+    tolerances = {
+        "grid_price": state.battery_skip_price_tolerance,
+        "solar_kw": state.battery_skip_solar_tolerance_kw,
+        "cpu_demand": state.battery_skip_cpu_tolerance,
+        "gpu_demand": state.battery_skip_gpu_tolerance,
+        "battery_soc": state.battery_skip_soc_tolerance,
+        "temperature": state.battery_skip_temperature_tolerance_c,
+        "ambient": state.battery_skip_ambient_tolerance_c,
+        "power_risk": state.battery_skip_power_risk_tolerance,
+    }
+    return all(
+        abs(current_signature[name] - previous_signature[name])
+        <= tolerance
+        for name, tolerance in tolerances.items()
+    )
+
+
 def run_simulation(
     controller,
     workload_profile,
@@ -179,6 +225,7 @@ def run_simulation(
     results = []
     dt = state.timestep_h
     last_cooling_decision_signature = None
+    last_battery_decision_signature = None
 
     print()
     print("=" * 60)
@@ -206,6 +253,7 @@ def run_simulation(
             )
 
     for hour in range(hours):
+        retained_battery_command_kw = state.battery_command_kw
         state.solar_kw = float(solar_profile[hour])
         state.grid_price = float(price_profile[hour])
         if ambient_profile is not None:
@@ -221,14 +269,24 @@ def run_simulation(
         fallback_used = False
         scheduling_ai_skipped = False
         cooling_ai_skipped = False
+        battery_ai_skipped = False
+        all_ai_skipped = False
         token_usage = {}
 
         current_cooling_signature = _cooling_input_signature()
+        current_battery_signature = _battery_input_signature()
 
         if is_agentic:
             cooling_ai_skipped = _can_reuse_cooling(
                 last_cooling_decision_signature,
                 current_cooling_signature,
+            )
+            battery_ai_skipped = (
+                cooling_ai_skipped
+                and _can_reuse_battery(
+                    last_battery_decision_signature,
+                    current_battery_signature,
+                )
             )
             if trace_arrivals is not None:
                 incoming_cpu = float(
@@ -254,26 +312,49 @@ def run_simulation(
                     "solar, battery, and power-risk inputs are unchanged; "
                     "reusing the previous cooling decision."
                 )
+            if battery_ai_skipped:
+                state.battery_command_kw = retained_battery_command_kw
+                print(
+                    f"\n[AGENTIC] Hour {hour} price, solar, workload, "
+                    "thermal, SOC, and power-risk inputs are unchanged; "
+                    "reusing the previous battery command."
+                )
             retained_cooling = (
                 state.cooling_factor,
                 state.cooling_setpoint_c,
             )
-            print(f"\n[AGENTIC] Running CrewAI for hour {hour}...")
-            start_time = time.perf_counter()
-            (
-                crew_output,
-                timed_out,
-                crew_error,
-                token_usage,
-            ) = run_crew_with_timeout(
-                architecture=agentic_architecture,
-                timeout_seconds=agent_timeout_seconds,
-                skip_compute=scheduling_ai_skipped,
-                skip_cooling=cooling_ai_skipped,
+            all_ai_skipped = (
+                scheduling_ai_skipped
+                and cooling_ai_skipped
+                and battery_ai_skipped
             )
-            response_time = time.perf_counter() - start_time
+            if all_ai_skipped:
+                crew_output = None
+                crew_error = None
+                print(
+                    f"\n[AGENTIC] Hour {hour} has no changed AI control "
+                    "inputs; skipping the complete CrewAI call."
+                )
+            else:
+                print(f"\n[AGENTIC] Running CrewAI for hour {hour}...")
+                start_time = time.perf_counter()
+                (
+                    crew_output,
+                    timed_out,
+                    crew_error,
+                    token_usage,
+                ) = run_crew_with_timeout(
+                    architecture=agentic_architecture,
+                    timeout_seconds=agent_timeout_seconds,
+                    skip_compute=scheduling_ai_skipped,
+                    skip_cooling=cooling_ai_skipped,
+                    skip_battery=battery_ai_skipped,
+                )
+                response_time = time.perf_counter() - start_time
 
-            if timed_out or crew_error is not None:
+            if not all_ai_skipped and (
+                timed_out or crew_error is not None
+            ):
                 reason = "timed out" if timed_out else "failed"
                 print(f"[FALLBACK] CrewAI {reason}; using rule-based controller.")
                 if crew_error:
@@ -285,7 +366,9 @@ def run_simulation(
                         state.cooling_factor,
                         state.cooling_setpoint_c,
                     ) = retained_cooling
-            else:
+                if battery_ai_skipped:
+                    state.battery_command_kw = retained_battery_command_kw
+            elif not all_ai_skipped:
                 print(
                     f"[AGENTIC] CrewAI completed in "
                     f"{response_time:.2f} seconds."
@@ -315,8 +398,12 @@ def run_simulation(
                             state.cooling_factor,
                             state.cooling_setpoint_c,
                         ) = retained_cooling
+                    if battery_ai_skipped:
+                        state.battery_command_kw = retained_battery_command_kw
             if not cooling_ai_skipped:
                 last_cooling_decision_signature = current_cooling_signature
+            if not battery_ai_skipped:
+                last_battery_decision_signature = current_battery_signature
         else:
             apply_action(controller.decide())
 
@@ -434,6 +521,8 @@ def run_simulation(
             "fallback_used": int(fallback_used),
             "scheduling_ai_skipped": int(scheduling_ai_skipped),
             "cooling_ai_skipped": int(cooling_ai_skipped),
+            "battery_ai_skipped": int(battery_ai_skipped),
+            "all_ai_skipped": int(all_ai_skipped),
             "agentic_architecture": (
                 agentic_architecture if is_agentic else "not_applicable"
             ),

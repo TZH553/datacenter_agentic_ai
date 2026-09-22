@@ -1,3 +1,5 @@
+import math
+
 from state import state
 
 
@@ -9,11 +11,31 @@ def calculate_host_power(host):
     return host["p_idle"] + utilisation * (host["p_max"] - host["p_idle"])
 
 
+def estimate_accelerator_power(gpu_demand):
+    """Estimate consolidated GPU power from average GPUs used this hour."""
+    demand = max(0.0, min(float(gpu_demand), state.total_gpu_capacity))
+    if demand <= 1e-9:
+        return 0.0, 0, 0.0
+    active_count = min(state.total_gpu_capacity, math.ceil(demand - 1e-9))
+    utilisation = demand / active_count
+    power_kw = active_count * (
+        state.gpu_idle_power_kw
+        + utilisation * (state.gpu_max_power_kw - state.gpu_idle_power_kw)
+    )
+    return power_kw, active_count, utilisation
+
+
 def calculate_it_power():
-    """Calculate total active-host IT power in kW."""
-    state.it_power_kw = sum(
+    """Calculate CPU-server plus trace-inferred accelerator power in kW."""
+    state.cpu_it_power_kw = sum(
         calculate_host_power(host) for host in state.hosts.values()
     )
+    (
+        state.accelerator_power_kw,
+        state.active_gpu_count,
+        state.gpu_utilisation,
+    ) = estimate_accelerator_power(state.gpu_demand)
+    state.it_power_kw = state.cpu_it_power_kw + state.accelerator_power_kw
     return state.it_power_kw
 
 

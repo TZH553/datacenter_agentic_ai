@@ -274,6 +274,10 @@ def run_simulation(
         unmet_workload = (
             unmet_workload_cpu / state.total_cpu_capacity
         )
+        assigned_gpu_demand = state.gpu_demand
+        unmet_gpu_demand = max(
+            0.0, state.requested_gpu_demand - assigned_gpu_demand
+        )
 
         # PUE is undefined when no IT load is running. Store NaN instead of
         # dividing by an epsilon, which produced extremely large fake values.
@@ -323,6 +327,11 @@ def run_simulation(
             ),
             "server_idle_power_kw": state.server_idle_power_kw,
             "server_max_power_kw": state.server_max_power_kw,
+            "gpu_server_count": state.gpu_server_count,
+            "gpus_per_gpu_server": state.gpus_per_gpu_server,
+            "total_gpu_capacity": state.total_gpu_capacity,
+            "gpu_idle_power_kw": state.gpu_idle_power_kw,
+            "gpu_max_power_kw": state.gpu_max_power_kw,
             "workload": state.pending_workload_fraction,
             "workload_cpu_units": state.pending_workload_cpu,
             "total_cpu_capacity": state.total_cpu_capacity,
@@ -335,6 +344,14 @@ def run_simulation(
             "batch_served_cpu_units": state.batch_served_cpu,
             "batch_backlog_cpu_units": state.batch_backlog_cpu,
             "batch_deadline_missed_cpu_units": deadline_missed_cpu,
+            "batch_arrival_gpu_hours": state.batch_arrival_gpu_work,
+            "batch_backlog_gpu_hours": state.batch_backlog_gpu_work,
+            "scheduled_gpu_hours": state.scheduled_gpu_work,
+            "requested_average_gpus": state.requested_gpu_demand,
+            "assigned_average_gpus": assigned_gpu_demand,
+            "unmet_average_gpus": unmet_gpu_demand,
+            "active_gpu_count": state.active_gpu_count,
+            "gpu_utilisation": state.gpu_utilisation,
             "agent_response_time_s": response_time,
             "agent_timed_out": int(timed_out),
             "fallback_used": int(fallback_used),
@@ -352,6 +369,8 @@ def run_simulation(
                 token_usage.get("total_tokens", 0) or 0
             ),
             "IT_power_kw": state.it_power_kw,
+            "CPU_server_power_kw": state.cpu_it_power_kw,
+            "accelerator_power_kw": state.accelerator_power_kw,
             "cooling_power_kw": state.cooling_power_kw,
             "cooling_heat_removed_kw": state.cooling_heat_removed_kw,
             "effective_cooling_cop": state.effective_cooling_cop,

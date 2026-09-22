@@ -51,6 +51,17 @@ class Config:
     cooling_setpoint_c: float = 22.0
     cooling_min_setpoint_c: float = 19.2
     cooling_max_setpoint_c: float = 22.8
+    # Reuse the previous AI cooling decision while all supervisory inputs stay
+    # within these deadbands. A decision is always forced near thermal limits.
+    cooling_skip_temperature_tolerance_c: float = 0.10
+    cooling_skip_ambient_tolerance_c: float = 0.50
+    cooling_skip_cpu_tolerance: float = 0.10
+    cooling_skip_gpu_tolerance: float = 0.05
+    cooling_skip_price_tolerance: float = 0.005
+    cooling_skip_solar_tolerance_kw: float = 0.10
+    cooling_skip_battery_soc_tolerance: float = 0.01
+    cooling_skip_power_risk_tolerance: float = 0.02
+    cooling_skip_thermal_guard_margin_c: float = 0.50
     server_heat_fraction: float = 0.95
     thermal_mass_kwh_per_c: float = 80.0
     thermal_control_time_constant_h: float = 2.0

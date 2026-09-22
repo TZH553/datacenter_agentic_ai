@@ -193,6 +193,27 @@ class DataCenterState:
         self.cooling_setpoint_c = cfg.cooling_setpoint_c
         self.cooling_min_setpoint_c = cfg.cooling_min_setpoint_c
         self.cooling_max_setpoint_c = cfg.cooling_max_setpoint_c
+        self.cooling_skip_temperature_tolerance_c = (
+            cfg.cooling_skip_temperature_tolerance_c
+        )
+        self.cooling_skip_ambient_tolerance_c = (
+            cfg.cooling_skip_ambient_tolerance_c
+        )
+        self.cooling_skip_cpu_tolerance = cfg.cooling_skip_cpu_tolerance
+        self.cooling_skip_gpu_tolerance = cfg.cooling_skip_gpu_tolerance
+        self.cooling_skip_price_tolerance = cfg.cooling_skip_price_tolerance
+        self.cooling_skip_solar_tolerance_kw = (
+            cfg.cooling_skip_solar_tolerance_kw
+        )
+        self.cooling_skip_battery_soc_tolerance = (
+            cfg.cooling_skip_battery_soc_tolerance
+        )
+        self.cooling_skip_power_risk_tolerance = (
+            cfg.cooling_skip_power_risk_tolerance
+        )
+        self.cooling_skip_thermal_guard_margin_c = (
+            cfg.cooling_skip_thermal_guard_margin_c
+        )
         self.cooling_cop = cfg.cooling_cop
         self.cooling_min_cop = cfg.cooling_min_cop
         self.cooling_cop_temp_coefficient = (

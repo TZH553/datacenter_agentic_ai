@@ -85,9 +85,8 @@ batch_service_fraction.
 facility_energy_task = Task(
     description=COMMON_LIMITS + COOLING_RULES + ENERGY_RULES + """
 Call Apply facility energy plan once with cooling_factor,
-cooling_setpoint_c, and battery_power_kw. Keep projected facility power below
-the 33.25 kW operating ceiling, which provides a 5% margin below the 35 kW
-physical capacity.
+cooling_setpoint_c, and battery_power_kw. Use the operating limit reported by
+telemetry rather than assuming a fixed facility capacity.
 """,
     expected_output="Accepted joint thermal and electrical plan.",
     agent=facility_energy_agent,
@@ -143,5 +142,33 @@ Call Apply facility energy plan once with cooling_factor,
 cooling_setpoint_c, and battery_power_kw.
 """,
     expected_output="Accepted idle-hour thermal and electrical plan.",
+    agent=integrated_ems_agent,
+)
+
+facility_battery_task = Task(
+    description=COMMON_LIMITS + ENERGY_RULES + """
+Thermal inputs are unchanged and the previous cooling factor and setpoint are
+being retained. Do not make a cooling decision. Call Dispatch battery once
+with only power_kw.
+""",
+    expected_output="Accepted battery command with cooling unchanged.",
+    agent=facility_energy_agent,
+)
+
+integrated_compute_task = Task(
+    description=COMMON_LIMITS + COMPUTE_RULES + """
+Thermal inputs are unchanged and cooling is being retained. Call Apply
+complete compute plan once with target_utilisation and batch_service_fraction.
+""",
+    expected_output="Accepted compute plan with cooling unchanged.",
+    agent=integrated_ems_agent,
+)
+
+integrated_energy_task = Task(
+    description=COMMON_LIMITS + ENERGY_RULES + """
+Thermal inputs are unchanged and cooling is being retained. Do not make a
+cooling decision. Call Dispatch battery once with only power_kw.
+""",
+    expected_output="Accepted battery command with cooling unchanged.",
     agent=integrated_ems_agent,
 )

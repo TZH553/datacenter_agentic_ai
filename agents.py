@@ -24,7 +24,7 @@ def _make_llm(max_tokens):
 
 
 specialist_llm = _make_llm(max_tokens=512)
-integrated_llm = _make_llm(max_tokens=1024)
+integrated_llm = _make_llm(max_tokens=512)
 
 
 scheduler_agent = Agent(
@@ -33,7 +33,7 @@ scheduler_agent = Agent(
     backstory="You specialize in heterogeneous CPU-capacity scheduling.",
     tools=[get_cluster_telemetry, schedule_workload_batch],
     verbose=True,
-    max_iter=3,
+    max_iter=2,
     llm=specialist_llm,
 )
 
@@ -43,7 +43,7 @@ power_governor_agent = Agent(
     backstory="You eliminate idle-server power after workload placement.",
     tools=[get_cluster_telemetry, set_host_power_batch],
     verbose=True,
-    max_iter=3,
+    max_iter=2,
     llm=specialist_llm,
 )
 
@@ -59,7 +59,7 @@ compute_agent = Agent(
     ),
     tools=[get_cluster_telemetry, apply_compute_plan],
     verbose=True,
-    max_iter=3,
+    max_iter=2,
     llm=specialist_llm,
 )
 
@@ -69,7 +69,7 @@ cooling_agent = Agent(
     backstory="You minimize cooling energy within thermal constraints.",
     tools=[get_cluster_telemetry, set_cooling_level],
     verbose=True,
-    max_iter=3,
+    max_iter=2,
     llm=specialist_llm,
 )
 
@@ -79,7 +79,7 @@ energy_agent = Agent(
     backstory="You coordinate solar, grid price, and battery reserves.",
     tools=[get_cluster_telemetry, dispatch_battery],
     verbose=True,
-    max_iter=3,
+    max_iter=2,
     llm=specialist_llm,
 )
 
@@ -97,7 +97,7 @@ facility_energy_agent = Agent(
         set_cooling_level,
     ],
     verbose=True,
-    max_iter=3,
+    max_iter=2,
     llm=specialist_llm,
 )
 
@@ -117,6 +117,6 @@ integrated_ems_agent = Agent(
         set_cooling_level,
     ],
     verbose=True,
-    max_iter=3,
+    max_iter=2,
     llm=integrated_llm,
 )

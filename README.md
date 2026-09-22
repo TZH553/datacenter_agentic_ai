@@ -162,6 +162,35 @@ the queue, even if the current trace bin has no new submissions. Hourly output
 records this decision in `scheduling_ai_skipped`, and the summary reports
 `Scheduling AI Skips`.
 
+The supervisory cooling decision is also reused when none of its relevant
+inputs has changed materially since the last cooling decision. The comparison
+includes room temperature, ambient temperature, CPU demand, GPU demand,
+electricity price, solar power, battery SOC, and facility power-risk ratio.
+The first hour always calls the cooling decision, and reuse is disabled when
+room temperature is within the configured guard margin of either thermal
+limit. The low-level thermal model continues to calculate cooling power and
+room-temperature evolution every hour even when the AI decision is reused.
+
+The deadbands are configurable near the cooling parameters in `config.py`:
+
+```python
+cooling_skip_temperature_tolerance_c = 0.10
+cooling_skip_ambient_tolerance_c = 0.50
+cooling_skip_cpu_tolerance = 0.10
+cooling_skip_gpu_tolerance = 0.05
+cooling_skip_price_tolerance = 0.005
+cooling_skip_solar_tolerance_kw = 0.10
+cooling_skip_battery_soc_tolerance = 0.01
+cooling_skip_power_risk_tolerance = 0.02
+cooling_skip_thermal_guard_margin_c = 0.50
+```
+
+When reuse is allowed, the previous `cooling_factor` and
+`cooling_setpoint_c` are retained exactly. Other necessary agents can still
+run: workload scheduling and battery dispatch are not skipped merely because
+cooling is unchanged. Hourly output records `cooling_ai_skipped`, and the
+experiment summary reports `Cooling AI Skips`.
+
 ## Heterogeneous cluster example
 
 Input workload profiles remain normalized fractions from 0 to 1. The simulator

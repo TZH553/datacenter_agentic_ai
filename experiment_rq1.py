@@ -149,6 +149,12 @@ def calculate_summary(name, df, is_agentic):
         "Cooling AI Skips": (
             df["cooling_ai_skipped"].sum() if is_agentic else None
         ),
+        "Battery AI Skips": (
+            df["battery_ai_skipped"].sum() if is_agentic else None
+        ),
+        "Complete CrewAI Skips": (
+            df["all_ai_skipped"].sum() if is_agentic else None
+        ),
         "Prompt Tokens": (
             df["agent_prompt_tokens"].sum() if is_agentic else None
         ),

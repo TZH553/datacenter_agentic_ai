@@ -172,3 +172,23 @@ cooling decision. Call Dispatch battery once with only power_kw.
     expected_output="Accepted battery command with cooling unchanged.",
     agent=integrated_ems_agent,
 )
+
+facility_cooling_task = Task(
+    description=COMMON_LIMITS + COOLING_RULES + """
+Battery-dispatch inputs are unchanged and the previous battery command is
+being retained. Do not make a battery decision. Call Set cooling level once
+with cooling_factor and cooling_setpoint_c.
+""",
+    expected_output="Accepted cooling plan with battery command unchanged.",
+    agent=facility_energy_agent,
+)
+
+integrated_cooling_task = Task(
+    description=COMMON_LIMITS + COOLING_RULES + """
+Battery-dispatch inputs are unchanged and the previous battery command is
+being retained. Do not make a battery decision. Call Set cooling level once
+with cooling_factor and cooling_setpoint_c.
+""",
+    expected_output="Accepted cooling plan with battery command unchanged.",
+    agent=integrated_ems_agent,
+)

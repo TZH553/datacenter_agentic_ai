@@ -248,15 +248,16 @@ therefore receive 200 CPU units of demand.
 
 ## Agent architecture comparison
 
-The experiment compares the same physical simulation under three CrewAI
+The experiment compares the same physical simulation under four CrewAI
 architectures:
 
 - `four_agent`: scheduler, power governor, thermal manager, energy manager
 - `three_agent`: combined compute manager, thermal manager, energy manager
+- `two_agent`: combined compute manager and combined facility-energy manager
 - `single_agent`: one integrated EMS agent with all control tools
 
-The specialist agents allow up to 2,048 output tokens per task. The integrated
-single agent allows up to 4,096 output tokens for its larger decision.
+All agents allow up to 512 output tokens and two reasoning iterations per
+task: one telemetry call followed by one control call.
 
 Start LM Studio with the `qwen2.5-7b-instruct` model and its OpenAI-compatible
 server at `http://127.0.0.1:1234/v1`. Then run a one-hour smoke test:
@@ -269,7 +270,8 @@ For a longer final experiment on Windows Command Prompt:
 
 ```bat
 set EXPERIMENT_HOURS=24
-set AGENT_TIMEOUT_SECONDS=180
+set AGENT_TIMEOUT_SECONDS=120
+set AGENTIC_ARCHITECTURE=four_agent
 python experiment_rq1.py
 ```
 
@@ -277,9 +279,24 @@ For PowerShell:
 
 ```powershell
 $env:EXPERIMENT_HOURS=24
-$env:AGENT_TIMEOUT_SECONDS=180
+$env:AGENT_TIMEOUT_SECONDS=120
+$env:AGENTIC_ARCHITECTURE="four_agent"
 python experiment_rq1.py
 ```
+
+For reliable architecture comparisons, restart LM Studio and run each of
+`four_agent`, `three_agent`, `two_agent`, and `single_agent` separately by
+changing `AGENTIC_ARCHITECTURE`. Killing a timed-out Python worker does not
+guarantee that LM Studio cancels its current generation; a later request can
+otherwise wait behind the stalled request.
+
+The runner waits 10 seconds after a timeout and stops an architecture after
+two consecutive timeouts. Configure these safeguards with
+`TIMEOUT_RECOVERY_SECONDS` and `MAX_CONSECUTIVE_AGENT_TIMEOUTS`. If an agentic
+run is incomplete or contains a timeout, `rq3_summary.csv` marks it as
+`INCOMPLETE` and sets `Comparable Result` to false. When running all
+architectures together, later agentic runs are skipped after the first
+incomplete run to prevent a local-model backlog from contaminating them.
 
 All architectures receive the same input profiles and each call to
 `run_simulation` resets the physical state. Results are saved to separate

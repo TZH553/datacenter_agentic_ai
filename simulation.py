@@ -218,6 +218,8 @@ def run_simulation(
     config=None,
     agentic_architecture="four_agent",
     agent_timeout_seconds=120,
+    max_consecutive_agent_timeouts=2,
+    timeout_recovery_seconds=10.0,
     trace_arrivals=None,
 ):
     """Run all power and energy calculations using one consistent timestep."""
@@ -226,6 +228,7 @@ def run_simulation(
     dt = state.timestep_h
     last_cooling_decision_signature = None
     last_battery_decision_signature = None
+    consecutive_agent_timeouts = 0
 
     print()
     print("=" * 60)
@@ -351,6 +354,18 @@ def run_simulation(
                     skip_battery=battery_ai_skipped,
                 )
                 response_time = time.perf_counter() - start_time
+
+                if timed_out:
+                    consecutive_agent_timeouts += 1
+                    if timeout_recovery_seconds > 0:
+                        print(
+                            "[RECOVERY] Waiting "
+                            f"{timeout_recovery_seconds:.1f} seconds before "
+                            "the next local-model request."
+                        )
+                        time.sleep(timeout_recovery_seconds)
+                else:
+                    consecutive_agent_timeouts = 0
 
             if not all_ai_skipped and (
                 timed_out or crew_error is not None
@@ -588,6 +603,7 @@ def run_simulation(
             ),
             "cost": state.cost,
             "pue": pue,
+            "run_incomplete": False,
         }
         results.append(result)
 
@@ -601,5 +617,20 @@ def run_simulation(
             f"Temp={result['temperature_C']:.2f} C | "
             f"Cost=${result['cost']:.2f}"
         )
+
+        if (
+            is_agentic
+            and max_consecutive_agent_timeouts > 0
+            and consecutive_agent_timeouts
+            >= max_consecutive_agent_timeouts
+        ):
+            results[-1]["run_incomplete"] = True
+            print(
+                "[ABORT] Stopping this architecture after "
+                f"{consecutive_agent_timeouts} consecutive CrewAI "
+                "timeouts. Restart LM Studio before running another "
+                "agentic architecture."
+            )
+            break
 
     return results

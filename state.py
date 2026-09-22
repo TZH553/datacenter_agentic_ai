@@ -167,6 +167,27 @@ class DataCenterState:
         self.battery_residual_value_fraction = (
             cfg.battery_residual_value_fraction
         )
+        self.battery_skip_price_tolerance = (
+            cfg.battery_skip_price_tolerance
+        )
+        self.battery_skip_solar_tolerance_kw = (
+            cfg.battery_skip_solar_tolerance_kw
+        )
+        self.battery_skip_cpu_tolerance = cfg.battery_skip_cpu_tolerance
+        self.battery_skip_gpu_tolerance = cfg.battery_skip_gpu_tolerance
+        self.battery_skip_soc_tolerance = cfg.battery_skip_soc_tolerance
+        self.battery_skip_temperature_tolerance_c = (
+            cfg.battery_skip_temperature_tolerance_c
+        )
+        self.battery_skip_ambient_tolerance_c = (
+            cfg.battery_skip_ambient_tolerance_c
+        )
+        self.battery_skip_power_risk_tolerance = (
+            cfg.battery_skip_power_risk_tolerance
+        )
+        self.battery_skip_soc_guard_margin = (
+            cfg.battery_skip_soc_guard_margin
+        )
         self.battery_upfront_cost = (
             self.battery_capacity_kwh * self.battery_capex_per_kwh
         )

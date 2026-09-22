@@ -49,8 +49,19 @@ def calculate_summary(name, df, is_agentic):
         "Server Maximum Power (kW)": df[
             "server_max_power_kw"
         ].iloc[0],
+        "GPU Server Count": df["gpu_server_count"].iloc[0],
+        "GPUs per GPU Server": df["gpus_per_gpu_server"].iloc[0],
+        "Total GPU Capacity": df["total_gpu_capacity"].iloc[0],
+        "GPU Idle Power (kW)": df["gpu_idle_power_kw"].iloc[0],
+        "GPU Maximum Power (kW)": df["gpu_max_power_kw"].iloc[0],
         "Total Energy (kWh)": df["total_energy_kwh"].sum(),
         "IT Energy (kWh)": df["IT_energy_kwh"].sum(),
+        "CPU Server Energy (kWh)": (
+            df["CPU_server_power_kw"] * df["timestep_h"]
+        ).sum(),
+        "Accelerator Energy (kWh)": (
+            df["accelerator_power_kw"] * df["timestep_h"]
+        ).sum(),
         "Cooling Energy (kWh)": df["cooling_energy_kwh"].sum(),
         "Grid Energy (kWh)": df["grid_energy_kwh"].sum(),
         "Solar Used (kWh)": df["solar_used_kwh"].sum(),
@@ -108,6 +119,15 @@ def calculate_summary(name, df, is_agentic):
         "Final Batch Backlog CPU": df[
             "batch_backlog_cpu_units"
         ].iloc[-1],
+        "GPU Work Scheduled (GPU-hours)": df[
+            "scheduled_gpu_hours"
+        ].sum(),
+        "Peak Requested Average GPUs": df[
+            "requested_average_gpus"
+        ].max(),
+        "Unmet GPU Demand (GPU-hours)": (
+            df["unmet_average_gpus"] * df["timestep_h"]
+        ).sum(),
         "Minimum SOC": df["battery_SOC"].min(),
         "Maximum SOC": df["battery_SOC"].max(),
         "Final SOC": df["battery_SOC"].iloc[-1],

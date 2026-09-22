@@ -1,4 +1,9 @@
-# Data-Centre Agentic AI Optimisation Simulator
+# Agentic-AI-Controlled General Cloud Data-Centre Simulator
+
+This project models a **general heterogeneous cloud data centre controlled by
+an Agentic AI energy-management system**. Agentic AI describes the controller;
+it does not imply that every incoming workload is an AI workload. The trace
+contains batch, interactive, MPI, and GPU-labelled cloud jobs.
 
 This is a complete starter implementation of the architecture:
 
@@ -51,14 +56,18 @@ near the start of `config.py`:
 
 ```python
 n_clusters = 10
-hardware_profile_name = "Generic CPU compute server"
+hardware_profile_name = "General cloud CPU/GPU cluster"
 processor_model = "Assumed 20-core server processor"
-accelerator_model = "None"
+accelerator_model = "NVIDIA H100 SXM (assumed)"
 servers_per_cluster = 5
 processing_unit_name = "CPU-core equivalent"
 processing_capacity_per_server = 20.0
 server_idle_power_kw = 0.20
 server_max_power_kw = 0.60
+gpu_server_count = 5
+gpus_per_gpu_server = 8
+gpu_idle_power_kw = 0.07
+gpu_max_power_kw = 0.70
 ```
 
 Therefore, each default cluster contains five servers, provides 100 processing
@@ -67,11 +76,14 @@ utilisation. Across ten clusters, the model represents 50 servers and 1,000
 processing units. These defaults preserve the earlier cluster-level values
 while making their hardware basis explicit.
 
-The power values must represent complete wall-power for a server, including
-processor, memory, storage, fans, installed accelerators and power-supply
-losses. Change the model labels, capacity and measured power values together
-when selecting real hardware. The optional `p_idle_kw`, `p_max_kw`, and
-`cpu_capacity` fields override the derived cluster values when required.
+The CPU-server power values represent the server base system, including CPU,
+memory, storage, fans and power-supply losses, but exclude accelerator power.
+Accelerator power is calculated separately so GPU-labelled jobs do not make
+ordinary CPU-only jobs consume GPU power. Five of the 50 servers are assumed
+to be GPU-enabled, providing 40 GPUs in total. Change the model labels,
+capacity and power values together when selecting real hardware. The optional
+`p_idle_kw`, `p_max_kw`, and `cpu_capacity` fields override the derived
+cluster values when required.
 
 ## Cloud workload trace time resolution
 
@@ -99,6 +111,28 @@ one-hour bin containing its `Submit_Time`. Its processing work is:
 ```text
 CPU-core-hours = Used_CPUs × Execution_Time(Seconds) / 3600
 ```
+
+GPU-labelled jobs retain that CPU work because accelerator jobs still require
+host CPU resources. The source CSV has no requested-GPU field, so the model
+uses the documented assumption:
+
+```text
+requested GPUs = Node_Count, for Job_Type = GPU
+GPU-hours = requested GPUs × Execution_Time(Seconds) / 3600
+```
+
+Non-GPU jobs request zero GPUs. GPU work follows the same earliest-deadline-
+first service order as its associated CPU work. GPU power is calculated from
+the configured idle and maximum power after consolidating the selected GPU
+work onto the fewest accelerators. The hourly files separately report CPU
+server power, accelerator power, requested/assigned GPU demand, GPU
+utilisation and GPU-hours. The experiment summary reports accelerator energy,
+peak GPU demand and unmet GPU-hours.
+
+These GPU values are simulation assumptions, not measurements contained in
+the source trace. The model deliberately does not invent training/inference
+labels, model size or token counts. Actual deployments should replace these
+assumptions with scheduler requests and runtime accelerator telemetry.
 
 Interactive jobs are mandatory in their arrival hour. Other jobs enter the
 flexible queue with the following assumed deadlines:

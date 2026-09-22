@@ -23,15 +23,33 @@ from trace_workload import load_cloud_workload_trace
 # $env:BATTERY_CAPEX_PER_KWH=400
 HOURS = int(os.getenv("EXPERIMENT_HOURS", "24"))
 AGENT_TIMEOUT_SECONDS = int(os.getenv("AGENT_TIMEOUT_SECONDS", "120"))
+MAX_CONSECUTIVE_AGENT_TIMEOUTS = int(
+    os.getenv("MAX_CONSECUTIVE_AGENT_TIMEOUTS", "2")
+)
+TIMEOUT_RECOVERY_SECONDS = float(
+    os.getenv("TIMEOUT_RECOVERY_SECONDS", "10")
+)
+AGENTIC_ARCHITECTURE = os.getenv(
+    "AGENTIC_ARCHITECTURE", "all"
+).strip().lower()
 BATTERY_CAPEX_PER_KWH = float(
     os.getenv("BATTERY_CAPEX_PER_KWH", "400")
 )
 BATTERY_CYCLE_LIFE = int(os.getenv("BATTERY_CYCLE_LIFE", "10000"))
 
 
-def calculate_summary(name, df, is_agentic):
+def calculate_summary(name, df, is_agentic, expected_hours):
+    completed_hours = len(df)
+    has_timeout = bool(
+        is_agentic and df["agent_timed_out"].astype(bool).any()
+    )
+    complete = completed_hours == expected_hours and not has_timeout
     return {
         "System": name,
+        "Run Status": "COMPLETE" if complete else "INCOMPLETE",
+        "Comparable Result": complete,
+        "Completed Hours": completed_hours,
+        "Expected Hours": expected_hours,
         "Workload Source": df["workload_source"].iloc[0],
         "Trace Window Start": df["trace_bin_start"].iloc[0],
         "Hardware Profile": df["hardware_profile"].iloc[0],
@@ -168,6 +186,14 @@ def calculate_summary(name, df, is_agentic):
 
 
 def main():
+    valid_architectures = {
+        "all", "four_agent", "three_agent", "two_agent", "single_agent"
+    }
+    if AGENTIC_ARCHITECTURE not in valid_architectures:
+        raise ValueError(
+            "AGENTIC_ARCHITECTURE must be 'all', 'four_agent', "
+            "'three_agent', 'two_agent', or 'single_agent'."
+        )
     config = Config(
         battery_capex_per_kwh=BATTERY_CAPEX_PER_KWH,
         battery_cycle_life=BATTERY_CYCLE_LIFE,
@@ -238,7 +264,21 @@ def main():
     ]
 
     summaries = []
+    stop_remaining_agentic_runs = False
     for system in systems:
+        if system["is_agentic"]:
+            if (
+                AGENTIC_ARCHITECTURE != "all"
+                and system["architecture"] != AGENTIC_ARCHITECTURE
+            ):
+                continue
+            if stop_remaining_agentic_runs:
+                print(
+                    f"Skipping {system['name']} because the preceding "
+                    "agentic run was incomplete. Restart LM Studio and "
+                    "select this architecture with AGENTIC_ARCHITECTURE."
+                )
+                continue
         results = run_simulation(
             controller=system["controller"],
             workload_profile=workload,
@@ -249,6 +289,10 @@ def main():
             is_agentic=system["is_agentic"],
             agentic_architecture=system["architecture"],
             agent_timeout_seconds=AGENT_TIMEOUT_SECONDS,
+            max_consecutive_agent_timeouts=(
+                MAX_CONSECUTIVE_AGENT_TIMEOUTS
+            ),
+            timeout_recovery_seconds=TIMEOUT_RECOVERY_SECONDS,
             config=config,
             trace_arrivals=trace_arrivals,
         )
@@ -259,8 +303,14 @@ def main():
                 system["name"],
                 df,
                 system["is_agentic"],
+                HOURS,
             )
         )
+        if system["is_agentic"] and (
+            len(df) < HOURS
+            or bool(df["agent_timed_out"].astype(bool).any())
+        ):
+            stop_remaining_agentic_runs = True
 
     summary_df = pd.DataFrame(summaries)
     summary_df.to_csv("rq3_summary.csv", index=False)
